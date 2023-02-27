@@ -380,9 +380,6 @@ func TestRuntimes(t *testing.T) {
 			inW.Close()
 
 			assert.NilError(t, testCmd.Wait())
-
-			// cleanup cache
-			assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f").Run())
 		})
 	}
 }

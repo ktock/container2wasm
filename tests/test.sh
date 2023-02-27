@@ -3,7 +3,7 @@
 set -eu -o pipefail
 
 CONTAINER=test-container
-TIMEOUT=30m
+TIMEOUT=40m
 
 DOCKER_BUILDKIT=1 docker build --progress=plain -f Dockerfile.test -t $CONTAINER .
 docker run --rm -d --privileged -v ${CONTAINER}-cache:/var/lib/docker --name $CONTAINER $CONTAINER

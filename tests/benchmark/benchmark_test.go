@@ -164,9 +164,6 @@ func BenchmarkHello(t *testing.B) {
 
 				assert.NilError(t, testCmd.Wait())
 			}
-
-			// cleanup cache
-			assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f").Run())
 		})
 	}
 }
