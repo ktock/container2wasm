@@ -25,14 +25,16 @@ ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 FROM scratch AS oci-image-src
 COPY . .
 
-FROM ghcr.io/stargz-containers/ubuntu:22.04 AS assets-base
+FROM ubuntu:22.04 AS assets-base
 RUN apt-get update && apt-get install -y git
 RUN git clone ${SOURCE_REPO} /assets
 FROM scratch AS assets
 COPY --link --from=assets-base /assets /
 
-FROM ghcr.io/stargz-containers/ubuntu:22.04 AS bbl-dev
+FROM ubuntu:22.04 AS gcc-riscv64-linux-gnu-base
 RUN apt-get update && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make
+
+FROM gcc-riscv64-linux-gnu-base AS bbl-dev
 WORKDIR /work-buildroot/
 RUN git clone https://github.com/riscv-software-src/riscv-pk
 WORKDIR /work-buildroot/riscv-pk
@@ -49,8 +51,8 @@ RUN riscv64-linux-gnu-objcopy -O binary bbl bbl.bin && \
     mkdir /out/ && \
     mv bbl.bin /out/
 
-FROM ghcr.io/stargz-containers/ubuntu:22.04 AS linux-dev-common
-RUN apt-get update && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make gperf gcc flex bison bc
+FROM gcc-riscv64-linux-gnu-base AS linux-dev-common
+RUN apt-get update && apt-get install -y gperf gcc flex bison bc
 RUN mkdir /work-buildlinux
 WORKDIR /work-buildlinux
 RUN git clone -b v6.1 --depth 1 https://github.com/torvalds/linux
@@ -118,8 +120,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     make static GOARCH=riscv64 CC=riscv64-linux-gnu-gcc EXTRA_LDFLAGS='-s -w' BUILDTAGS="" && \
     mkdir -p /out/ && mv runc /out/runc
 
-FROM ghcr.io/stargz-containers/ubuntu:22.04 AS vmtouch-dev
-RUN apt-get update && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make
+FROM gcc-riscv64-linux-gnu-base AS vmtouch-dev
 RUN git clone https://github.com/hoytech/vmtouch.git && \
     cd vmtouch && \
     CC="riscv64-linux-gnu-gcc -static" make && \
@@ -147,10 +148,9 @@ FROM binfmt-$TARGETARCH AS binfmt-dev
 
 FROM --platform=riscv64 riscv64/alpine:20221110 AS rootfs
 
-FROM ghcr.io/stargz-containers/ubuntu:22.04 AS tini-dev
+FROM gcc-riscv64-linux-gnu-base AS tini-dev
 # https://github.com/krallin/tini#building-tini
-RUN apt-get update -y && \
-    apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make cmake
+RUN apt-get update -y && apt-get install -y cmake
 ENV CFLAGS="-DPR_SET_CHILD_SUBREAPER=36 -DPR_GET_CHILD_SUBREAPER=37"
 WORKDIR /work
 RUN git clone -b v0.19.0 https://github.com/krallin/tini
@@ -158,7 +158,7 @@ WORKDIR /work/tini
 ENV CC="riscv64-linux-gnu-gcc -static"
 RUN cmake . && make && mkdir /out/ && mv tini /out/
 
-FROM ghcr.io/stargz-containers/ubuntu:22.04 AS rootfs-dev
+FROM ubuntu:22.04 AS rootfs-dev
 RUN apt-get update -y && apt-get install -y mkisofs
 COPY --link --from=rootfs / /rootfs/
 COPY --link --from=binfmt-dev / /rootfs/
@@ -172,7 +172,7 @@ RUN touch /rootfs/etc/resolv.conf
 RUN mkdir /out/ && mkisofs -l -J -r -o /out/rootfs.bin /rootfs/
 # RUN isoinfo -i /out/rootfs.bin -l
 
-FROM ghcr.io/stargz-containers/ubuntu:22.04 AS tinyemu-config-dev
+FROM ubuntu:22.04 AS tinyemu-config-dev
 ARG LINUX_LOGLEVEL
 ARG VM_MEMORY_SIZE_MB
 COPY --link --from=assets /patches/tinyemu.config.template /
@@ -185,7 +185,7 @@ COPY --link --from=linux-dev /out/Image /pack/Image
 COPY --link --from=rootfs-dev /out/rootfs.bin /pack/rootfs.bin
 COPY --link --from=tinyemu-config-dev /out/tinyemu.config /pack/config
 
-FROM ghcr.io/ktock/rust:1-buster AS tinyemu-dev-common
+FROM rust:1-buster AS tinyemu-dev-common
 ARG WASI_VFS_VERSION
 ARG WASI_SDK_VERSION
 ARG WASI_SDK_VERSION_FULL
@@ -202,12 +202,14 @@ WORKDIR /work/
 RUN git clone -b "${WASI_VFS_VERSION}" https://github.com/kateinoigakukun/wasi-vfs.git --recurse-submodules
 WORKDIR /work/wasi-vfs
 RUN cargo build --target wasm32-unknown-unknown && \
-    cargo build --package wasi-vfs-cli
+    cargo build --package wasi-vfs-cli && \
+    rm -rf debug/deps
 
 WORKDIR /work/
 RUN git clone -b "${WIZER_VERSION}" https://github.com/bytecodealliance/wizer && \
     cd wizer && \
-    cargo build --bin wizer --all-features
+    cargo build --bin wizer --all-features && \
+    rm -rf debug/deps
 
 COPY --link --from=assets /patches/tinyemu /tinyemu
 WORKDIR /tinyemu

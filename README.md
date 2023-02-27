@@ -48,7 +48,7 @@ $ c2w --to-js riscv64/ubuntu:22.04 /tmp/out-js/htdocs/
 ```
 
 The following is an example of running the image on browser relying on [xterm-pty](https://github.com/mame/xterm-pty).
-This serves the image on `localhost:8080` using apache http server.
+This example serves the image on `localhost:8080` using apache http server.
 
 ```
 $ cp -R ./examples/emscripten/* /tmp/out-js/ && chmod 755 /tmp/out-js/htdocs
