@@ -1,0 +1,9 @@
+{
+    version: 1,
+    machine: "riscv64",
+    memory_size: ${MEMORY_SIZE},
+    bios: "/pack/bbl.bin",
+    kernel: "/pack/Image",
+    cmdline: "console=hvc0 root=/dev/vda ro quiet loglevel=${LOGLEVEL} init=/sbin/tini -- /sbin/init",
+    drive0: { file: "/pack/rootfs.bin" },
+}
