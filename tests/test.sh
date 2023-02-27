@@ -12,5 +12,5 @@ do
     echo "retrying..."
     sleep 3
 done
-docker exec -it -w /test $CONTAINER go test -timeout $TIMEOUT -v ./tests/integration/integration_test.go
+docker exec -w /test $CONTAINER go test -timeout $TIMEOUT -v ./tests/integration/integration_test.go
 docker kill $CONTAINER

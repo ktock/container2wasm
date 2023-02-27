@@ -43,6 +43,4 @@ $ docker run --rm -p 8080:80 \
          --entrypoint=/bin/sh httpd -c 'echo "Include conf/extra/xterm-pty.conf" >> /usr/local/apache2/conf/httpd.conf && httpd-foreground'
 ```
 
-![php with emscripten](../docs/images/php-hello.png)
-
-
+![php with emscripten](../../docs/images/php-hello.png)
