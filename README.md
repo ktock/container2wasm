@@ -14,10 +14,10 @@ This is an experimental software.
 ### Container Image to WASM (WASI)
 
 ```
-$ c2w riscv64/ubuntu:22.04 /tmp/out/out.wasm
+$ c2w riscv64/ubuntu:22.04 out.wasm
 ```
 
-The above command converts `riscv64/ubuntu:22.04` container image to WASI image (`/tmp/out/out.wasm`).
+The above command converts `riscv64/ubuntu:22.04` container image to WASI image (`out.wasm`).
 
 > NOTE: riscv64 container is recommended. Other platform's containers should work but slow because of additional emulation.
 
