@@ -382,7 +382,7 @@ func TestRuntimes(t *testing.T) {
 			assert.NilError(t, testCmd.Wait())
 
 			// cleanup cache
-			assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f", "--keep-storage=7GB").Run())
+			assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f", "--keep-storage=10GB").Run())
 		})
 	}
 }
