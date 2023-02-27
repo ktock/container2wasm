@@ -60,7 +60,8 @@ WORKDIR /work-buildlinux/linux
 COPY --link --from=assets /patches/linux_rv64_config ./.config
 RUN make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc) all && \
     mkdir /out && \
-    mv /work-buildlinux/linux/arch/riscv/boot/Image /out/Image
+    mv /work-buildlinux/linux/arch/riscv/boot/Image /out/Image && \
+    make clean
 
 FROM linux-dev-common AS linux-config-dev
 WORKDIR /work-buildlinux/linux
