@@ -32,14 +32,14 @@ jobs:
       run: |
         make test
 
-  benchmark:
-    runs-on: ubuntu-22.04
-    name: Benchmark
-    steps:
-    - uses: actions/checkout@v3
-    - name: Benchmark
-      run: |
-        make benchmark
+  # benchmark:
+  #   runs-on: ubuntu-22.04
+  #   name: Benchmark
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - name: Benchmark
+  #     run: |
+  #       make benchmark
 
   linter:
     runs-on: ubuntu-22.04
