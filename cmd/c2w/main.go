@@ -62,6 +62,10 @@ func main() {
 			Name:  "show-dockerfile",
 			Usage: "Show default Dockerfile",
 		},
+		cli.BoolFlag{
+			Name:  "legacy",
+			Usage: "Use \"docker build\" instead of buildx (no support for assets flag)",
+		},
 	}, flags...)
 	app.Action = rootAction
 	if err := app.Run(os.Args); err != nil {
@@ -87,6 +91,9 @@ func rootAction(clicontext *cli.Context) error {
 	legacy := false
 	if err := exec.Command(builderPath, "buildx").Run(); err != nil {
 		log.Printf("buildx unavailable. falling back to the normal builder.\n")
+		legacy = true
+	}
+	if clicontext.Bool("legacy") {
 		legacy = true
 	}
 	destDir, destFile := ".", defaultOutputFile

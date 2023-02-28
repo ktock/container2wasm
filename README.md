@@ -68,7 +68,7 @@ You can run the container on browser via `localhost:8080`.
 
 - requirements
   - Docker 18.09+ (w/ `DOCKER_BUILDKIT=1`)
-  - [Docker Buildx](https://docs.docker.com/build/install-buildx/) v0.8+ (recommended) or `docker build`
+  - [Docker Buildx](https://docs.docker.com/build/install-buildx/) v0.8+ (recommended) or `docker build` (w/ `DOCKER_BUILDKIT=1`)
 
 You can install the converter command `c2w` using one of the following methods:
 
@@ -111,6 +111,7 @@ Options
 - `--to-js`: output JS files runnable on the browsers using emscripten
 - `--debug-image`: Enable debug print in the output image
 - `--show-dockerfile`: Show default Dockerfile
+- `--legacy`: Use "docker build" instead of buildx (no support for assets flag) (default:false)
 - `--help, -h`: show help
 - `--version, -v: `print the version
 
