@@ -52,7 +52,7 @@ RUN riscv64-linux-gnu-objcopy -O binary bbl bbl.bin && \
     mv bbl.bin /out/
 
 FROM gcc-riscv64-linux-gnu-base AS linux-dev-common
-RUN apt-get update && apt-get install -y gperf gcc flex bison bc
+RUN apt-get update && apt-get install -y gperf flex bison bc
 RUN mkdir /work-buildlinux
 WORKDIR /work-buildlinux
 RUN git clone -b v6.1 --depth 1 https://github.com/torvalds/linux
@@ -110,8 +110,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     GOARCH=riscv64 go build -ldflags "-s -w -extldflags '-static'" -tags "osusergo netgo static_build" -o /out/init ./cmd/init
 
 FROM golang:1.19-bullseye AS runc-dev
-RUN apt-get update -y && \
-    apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make gperf
+RUN apt-get update -y && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make gperf
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     git clone https://github.com/opencontainers/runc.git /go/src/github.com/opencontainers/runc && \
@@ -191,32 +190,36 @@ ARG WASI_SDK_VERSION
 ARG WASI_SDK_VERSION_FULL
 ARG WIZER_VERSION
 ARG OUTPUT_NAME
-RUN apt-get update -y && apt-get install -y wget make curl git gcc xz-utils
+RUN apt-get update -y && apt-get install -y make curl git gcc xz-utils
 
 WORKDIR /wasi
-RUN wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION_FULL}-linux.tar.gz && \
-    tar xvf wasi-sdk-${WASI_SDK_VERSION_FULL}-linux.tar.gz
+RUN curl -o wasi-sdk.tar.gz -fSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION_FULL}-linux.tar.gz && \
+    tar xvf wasi-sdk.tar.gz && rm wasi-sdk.tar.gz
 ENV WASI_SDK_PATH=/wasi/wasi-sdk-${WASI_SDK_VERSION_FULL}
 
 WORKDIR /work/
-RUN git clone -b "${WASI_VFS_VERSION}" https://github.com/kateinoigakukun/wasi-vfs.git --recurse-submodules
-WORKDIR /work/wasi-vfs
-RUN cargo build --target wasm32-unknown-unknown && \
+RUN git clone -b "${WASI_VFS_VERSION}" https://github.com/kateinoigakukun/wasi-vfs.git --recurse-submodules && \
+    cd wasi-vfs && \
+    cargo build --target wasm32-unknown-unknown && \
     cargo build --package wasi-vfs-cli && \
-    rm -rf debug/deps
+    mkdir -p /tools/wasi-vfs/ && \
+    mv target/debug/wasi-vfs target/wasm32-unknown-unknown/debug/libwasi_vfs.a /tools/wasi-vfs/ && \
+    cargo clean
 
 WORKDIR /work/
 RUN git clone -b "${WIZER_VERSION}" https://github.com/bytecodealliance/wizer && \
     cd wizer && \
     cargo build --bin wizer --all-features && \
-    rm -rf debug/deps
+    mkdir -p /tools/wizer/ && \
+    mv include target/debug/wizer /tools/wizer/ && \
+    cargo clean
 
 COPY --link --from=assets /patches/tinyemu /tinyemu
 WORKDIR /tinyemu
 RUN make -j $(nproc) -f Makefile \
     CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP= \
-    CC="${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -D_WASI_EMULATED_SIGNAL -DWASI -I/work/wizer/include/" \
-    EMU_LIBS="/work/wasi-vfs/target/wasm32-unknown-unknown/debug/libwasi_vfs.a -lrt" \
+    CC="${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -D_WASI_EMULATED_SIGNAL -DWASI -I/tools/wizer/include/" \
+    EMU_LIBS="/tools/wasi-vfs/libwasi_vfs.a -lrt" \
     EMU_OBJS="virtio.o pci.o fs.o cutils.o iomem.o simplefb.o json.o machine.o temu.o wasi.o riscv_machine.o softfp.o riscv_cpu32.o riscv_cpu64.o fs_disk.o"
 
 FROM tinyemu-dev-common AS tinyemu-dev-native
@@ -224,13 +227,11 @@ COPY --link --from=vm-dev /pack /minpack
 
 FROM tinyemu-dev-common AS tinyemu-dev-wizer
 COPY --link --from=vm-dev /pack /pack
-RUN mv temu temu-org && /work/wizer/target/debug/wizer --allow-wasi --wasm-bulk-memory=true -r _start=wizer.resume --mapdir /pack::/pack -o temu temu-org
+RUN mv temu temu-org && /tools/wizer/wizer --allow-wasi --wasm-bulk-memory=true -r _start=wizer.resume --mapdir /pack::/pack -o temu temu-org
 RUN mkdir /minpack && cp /pack/rootfs.bin /minpack/
 
-FROM tinyemu-dev-${OPTIMIZATION_MODE} AS tinyemu-dev
-
-FROM tinyemu-dev AS tinyemu-dev-packed
-RUN /work/wasi-vfs/target/debug/wasi-vfs pack /tinyemu/temu --mapdir /pack::/minpack -o packed && mkdir /out && mv packed /out/$OUTPUT_NAME
+FROM tinyemu-dev-${OPTIMIZATION_MODE} AS tinyemu-dev-packed
+RUN /tools/wasi-vfs/wasi-vfs pack /tinyemu/temu --mapdir /pack::/minpack -o packed && mkdir /out && mv packed /out/$OUTPUT_NAME
 
 FROM emscripten/emsdk:$EMSDK_VERSION AS tinyemu-emscripten
 ARG EMSCRIPTEN_INITIAL_MEMORY

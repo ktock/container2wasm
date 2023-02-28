@@ -166,7 +166,7 @@ func BenchmarkHello(t *testing.B) {
 			}
 
 			// cleanup cache
-			assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f", "--keep-storage=10GB").Run())
+			assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f", "--keep-storage=11GB").Run())
 		})
 	}
 }
