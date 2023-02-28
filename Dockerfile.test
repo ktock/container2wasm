@@ -1,0 +1,71 @@
+# syntax = docker/dockerfile:1.4
+
+ARG BUILDX_VERSION=0.10.3
+ARG DOCKER_VERSION=23.0.1
+ARG WAMR_VERSION=1.1.2
+ARG WASMEDGE_VERSION=0.11.2
+ARG GOLANG_VERSION=1.20.1
+ARG WASMER_VERSION=v3.1.1
+ARG WASMTIME_VERSION=6.0.0
+
+FROM docker:${DOCKER_VERSION}-dind AS dind
+FROM docker/buildx-bin:${BUILDX_VERSION} AS buildx
+
+FROM golang:1.20 AS wazero-test-dev
+COPY ./tests/wazero /wazero
+WORKDIR /wazero
+RUN go build -o /out/wazero-test main.go
+
+FROM ubuntu:22.04
+ARG BUILDX_VERSION
+ARG DOCKER_VERSION
+ARG WAMR_VERSION
+ARG WASMEDGE_VERSION
+ARG GOLANG_VERSION
+ARG WASMER_VERSION
+ARG WASMTIME_VERSION
+
+RUN apt-get update && apt-get install -y ca-certificates iptables openssl pigz xz-utils curl wget
+
+# install docker
+ENV DOCKER_TLS_CERTDIR=/certs
+RUN mkdir /certs /certs/client && chmod 1777 /certs /certs/client
+COPY --from=dind /usr/local/bin/ /usr/local/bin/
+COPY --from=buildx /buildx /usr/libexec/docker/cli-plugins/docker-buildx
+VOLUME /var/lib/docker
+
+# install wasmtime
+RUN wget https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz && \
+    tar -xvf wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz && \
+    mv wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime /usr/local/bin/
+
+# install wamr
+RUN wget https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-${WAMR_VERSION}/iwasm-${WAMR_VERSION}-x86_64-ubuntu-20.04.tar.gz && \
+    tar -C /usr/local/bin/ -zxvf iwasm-${WAMR_VERSION}-x86_64-ubuntu-20.04.tar.gz
+
+# install wasmer
+RUN curl https://get.wasmer.io -sSfL | sh -s ${WASMER_VERSION}
+ENV WASMER_DIR="/root/.wasmer"
+ENV WASMER_CACHE_DIR="$WASMER_DIR/cache"
+ENV PATH="$WASMER_DIR/bin:$PATH:$WASMER_DIR/globals/wapm_packages/.bin"
+
+# install wasmedge
+RUN wget https://github.com/WasmEdge/WasmEdge/releases/download/${WASMEDGE_VERSION}/WasmEdge-${WASMEDGE_VERSION}-ubuntu20.04_x86_64.tar.gz && \
+    tar zxvf WasmEdge-${WASMEDGE_VERSION}-ubuntu20.04_x86_64.tar.gz && \
+    cp -R ./WasmEdge-${WASMEDGE_VERSION}-Linux/* /usr/local/
+
+# install wazero
+COPY --from=wazero-test-dev /out/wazero-test /usr/local/bin/
+
+# install golang
+RUN wget https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz
+RUN tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz
+ENV PATH=$PATH:/usr/local/go/bin
+
+# install container2wasm
+COPY . /test/
+WORKDIR /test/
+RUN go build -o /usr/local/bin/ ./cmd/c2w
+
+ENTRYPOINT ["dockerd-entrypoint.sh"]
+CMD []
