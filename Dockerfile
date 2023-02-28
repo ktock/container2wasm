@@ -3,8 +3,8 @@
 ARG BINFMT_VERSION=qemu-v6.1.0
 ARG WASI_SDK_VERSION=19
 ARG WASI_SDK_VERSION_FULL=${WASI_SDK_VERSION}.0
-ARG WASI_VFS_VERSION=main
-ARG WIZER_VERSION=main
+ARG WASI_VFS_VERSION=ddbea0e2a6a1e0e8fe0373ec3d1bdccf522178ab
+ARG WIZER_VERSION=04e49c989542f2bf3a112d60fbf88a62cce2d0d0
 ARG EMSDK_VERSION=3.1.31
 
 # ARG LINUX_LOGLEVEL=0
@@ -201,8 +201,9 @@ RUN curl -o wasi-sdk.tar.gz -fSL https://github.com/WebAssembly/wasi-sdk/release
 ENV WASI_SDK_PATH=/wasi/wasi-sdk-${WASI_SDK_VERSION_FULL}
 
 WORKDIR /work/
-RUN git clone -b "${WASI_VFS_VERSION}" https://github.com/kateinoigakukun/wasi-vfs.git --recurse-submodules && \
+RUN git clone https://github.com/kateinoigakukun/wasi-vfs.git --recurse-submodules && \
     cd wasi-vfs && \
+    git checkout "${WASI_VFS_VERSION}" && \
     cargo build --target wasm32-unknown-unknown && \
     cargo build --package wasi-vfs-cli && \
     mkdir -p /tools/wasi-vfs/ && \
@@ -210,8 +211,9 @@ RUN git clone -b "${WASI_VFS_VERSION}" https://github.com/kateinoigakukun/wasi-v
     cargo clean
 
 WORKDIR /work/
-RUN git clone -b "${WIZER_VERSION}" https://github.com/bytecodealliance/wizer && \
+RUN git clone https://github.com/bytecodealliance/wizer && \
     cd wizer && \
+    git checkout "${WIZER_VERSION}" && \
     cargo build --bin wizer --all-features && \
     mkdir -p /tools/wizer/ && \
     mv include target/debug/wizer /tools/wizer/ && \
