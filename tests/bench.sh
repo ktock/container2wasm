@@ -3,7 +3,7 @@
 set -eu -o pipefail
 
 CONTAINER=test-container
-TIMEOUT=50m
+TIMEOUT=60m
 BENCHTIME=3x
 
 DOCKER_BUILDKIT=1 docker build --progress=plain -f Dockerfile.test -t $CONTAINER .
