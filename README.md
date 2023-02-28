@@ -39,6 +39,8 @@ $ wasmtime --mapdir /test/dir/share::/tmp/share -- out.wasm --entrypoint=cat -- 
 hi
 ```
 
+> NOTE: Other WASI features untested. Future version will support more WASI features.
+
 ### Container on Browser
 
 The following command generates a WASM image and a JS file runnable on browser.
@@ -177,6 +179,8 @@ The following shows the techniqual details:
 
 - :heavy_check_mark: : supported
 - :construction: : WIP
+
+- **NOTE**: WASI features other than above is untested (future version will support more features)
 
 ## Similar projects
 
