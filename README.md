@@ -1,3 +1,7 @@
+[[:arrow_down: **Download**]](https://github.com/ktock/container2wasm/releases)
+[[:book: **Command reference**]](#command-reference)
+[[:books: **Additional Documents**]](#additional-documents)
+
 # container2wasm: Container to WASM converter
 
 container2wasm is a container-to-wasm image converter that enables to run the container on WASM.
