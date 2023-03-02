@@ -1,6 +1,6 @@
 # Exapmles 
 
-This directory contains advanced examples for container-to-wasm conversion and running the image on the wasm runtime and browser.
+Examples of container-to-wasm conversion and running the WASM image on WASI runtime and browser.
 
 Please refer to [README](./../README.md) for basic examples (e.g. Ubuntu on WASM and browser).
 
