@@ -3,7 +3,7 @@ module github.com/ktock/container2wasm
 go 1.19
 
 require (
-	github.com/containerd/containerd v1.7.0-rc.0
+	github.com/containerd/containerd v1.7.0-rc.1
 	github.com/opencontainers/image-spec v1.1.0-rc2.0.20221005185240-3a7f492d3f1b
 	github.com/opencontainers/runc v1.1.4
 	github.com/opencontainers/runtime-spec v1.1.0-rc.1
