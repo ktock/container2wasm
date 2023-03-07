@@ -1,5 +1,7 @@
 # python example
 
+This example relies on [Docker Buildx](https://docs.docker.com/build/install-buildx/) v0.8+ with [multi-platform build](https://docs.docker.com/build/building/multi-platform/) configured.
+
 Build a riscv64 python image:
 
 ```console

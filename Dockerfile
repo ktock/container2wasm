@@ -6,6 +6,7 @@ ARG WASI_SDK_VERSION_FULL=${WASI_SDK_VERSION}.0
 ARG WASI_VFS_VERSION=ddbea0e2a6a1e0e8fe0373ec3d1bdccf522178ab
 ARG WIZER_VERSION=04e49c989542f2bf3a112d60fbf88a62cce2d0d0
 ARG EMSDK_VERSION=3.1.31
+ARG BUSYBOX_VERSION=1_36_0
 
 # ARG LINUX_LOGLEVEL=0
 # ARG INIT_DEBUG=false
@@ -148,7 +149,18 @@ FROM binfmt-base AS binfmt-s390
 COPY --link --from=binfmt /usr/bin/qemu-s390 /usr/bin/
 FROM binfmt-$TARGETARCH AS binfmt-dev
 
-FROM --platform=riscv64 riscv64/alpine:20221110 AS rootfs
+FROM gcc-riscv64-linux-gnu-base AS busybox-dev
+ARG BUSYBOX_VERSION
+RUN apt-get update -y && apt-get install -y gcc bzip2
+WORKDIR /work
+RUN git clone -b $BUSYBOX_VERSION --depth 1 https://git.busybox.net/busybox
+WORKDIR /work/busybox
+RUN make CROSS_COMPILE=riscv64-linux-gnu- LDFLAGS=--static defconfig
+RUN make CROSS_COMPILE=riscv64-linux-gnu- LDFLAGS=--static -j$(nproc)
+RUN mkdir -p /out && mv busybox /out/busybox
+RUN make LDFLAGS=--static defconfig
+RUN make LDFLAGS=--static -j$(nproc)
+RUN for i in $(./busybox --list) ; do ln -s busybox /out/$i ; done
 
 FROM gcc-riscv64-linux-gnu-base AS tini-dev
 # https://github.com/krallin/tini#building-tini
@@ -162,15 +174,15 @@ RUN cmake . && make && mkdir /out/ && mv tini /out/
 
 FROM ubuntu:22.04 AS rootfs-dev
 RUN apt-get update -y && apt-get install -y mkisofs
-COPY --link --from=rootfs / /rootfs/
+COPY --link --from=busybox-dev /out/ /rootfs/bin/
 COPY --link --from=binfmt-dev / /rootfs/
 COPY --link --from=runc-dev /out/runc /rootfs/sbin/runc
 COPY --link --from=bundle-dev /out/ /rootfs/
-RUN rm /rootfs/sbin/init
 COPY --link --from=init-dev /out/init /rootfs/sbin/init
 COPY --link --from=vmtouch-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-dev /out/tini /rootfs/sbin/tini
-RUN touch /rootfs/etc/resolv.conf
+RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
+RUN touch /rootfs/etc/resolv.conf /rootfs/etc/hosts
 RUN mkdir /out/ && mkisofs -l -J -r -o /out/rootfs.bin /rootfs/
 # RUN isoinfo -i /out/rootfs.bin -l
 

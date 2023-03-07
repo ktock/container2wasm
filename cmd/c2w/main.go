@@ -138,6 +138,7 @@ func build(builderPath string, srcImgName string, destDir, destFile string, clic
 	buildxArgs := []string{
 		"buildx", "build", "--progress=plain",
 		"--build-arg", fmt.Sprintf("TARGETARCH=%s", clicontext.String("target-arch")),
+		"--build-arg", fmt.Sprintf("TARGETPLATFORM=linux/%s", clicontext.String("target-arch")),
 	}
 	var dockerfilePath string
 	if o := clicontext.String("dockerfile"); o != "" {
@@ -252,7 +253,7 @@ func prepareSourceImg(builderPath, imgName, tmpdir, targetarch string) error {
 	needsPull := false
 	if idata, err := exec.Command(builderPath, "image", "inspect", imgName).Output(); err != nil {
 		needsPull = true
-	} else {
+	} else if targetarch != "" {
 		inspectData := make([]map[string]interface{}, 1)
 		if err := json.Unmarshal(idata, &inspectData); err != nil {
 			return err
@@ -263,8 +264,13 @@ func prepareSourceImg(builderPath, imgName, tmpdir, targetarch string) error {
 		}
 	}
 	if needsPull {
+		args := []string{"pull"}
+		if targetarch != "" {
+			args = append(args, "--platform=linux/"+targetarch)
+		}
+		args = append(args, imgName)
 		log.Printf("cannot get image %q locally; pulling it from the registry...\n", imgName)
-		pullCmd := exec.Command(builderPath, "pull", "--platform=linux/"+targetarch, imgName)
+		pullCmd := exec.Command(builderPath, args...)
 		pullCmd.Stdout = os.Stdout
 		pullCmd.Stderr = os.Stderr
 		if err := pullCmd.Run(); err != nil {

@@ -17,7 +17,7 @@ This is an experimental software.
 
 ### Container Image to WASM (WASI)
 
-```
+```console
 $ c2w riscv64/ubuntu:22.04 out.wasm
 ```
 
@@ -27,7 +27,7 @@ The above command converts `riscv64/ubuntu:22.04` container image to WASI image 
 
 The generated image runs on WASI runtimes:
 
-```
+```console
 $ wasmtime out.wasm uname -a
 Linux localhost 6.1.0 #1 Wed Feb 15 04:09:09 UTC 2023 riscv64 riscv64 riscv64 GNU/Linux
 $ wasmtime out.wasm ls /
@@ -37,7 +37,7 @@ boot  etc  lib	 mnt	proc  run   srv   tmp  var
 
 Directories on the host can be available on the container using `--mapdir`:
 
-```
+```console
 $ mkdir -p /tmp/share/ && echo hi > /tmp/share/hi
 $ wasmtime --mapdir /test/dir/share::/tmp/share -- out.wasm --entrypoint=cat -- /test/dir/share/hi
 hi
@@ -49,14 +49,14 @@ hi
 
 The following command generates a WASM image and a JS file runnable on browser.
 
-```
+```console
 $ c2w --to-js riscv64/ubuntu:22.04 /tmp/out-js/htdocs/
 ```
 
 The following is an example of running the image on browser relying on [xterm-pty](https://github.com/mame/xterm-pty).
 This example serves the image on `localhost:8080` using apache http server.
 
-```
+```console
 $ cp -R ./examples/emscripten/* /tmp/out-js/ && chmod 755 /tmp/out-js/htdocs
 $ docker run --rm -p 8080:80 \
          -v "/tmp/out-js/htdocs:/usr/local/apache2/htdocs/:ro" \
@@ -166,7 +166,7 @@ The following shows the techniqual details:
 
 - Builder: [BuildKit](https://github.com/moby/buildkit) runs the conversion steps written in Dockerfile.
 - Emulator: [TinyEMU](https://bellard.org/tinyemu/) emulates RISC-V CPU on WASM. It's compiled to WASM using [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) (for WASI) and [emscripten](https://github.com/emscripten-core/emscripten) (for on-browser).
-- Guest OS: Linux and [`riscv64/alpine`](https://hub.docker.com/r/riscv64/alpine/tags) run on the emulated RISC-V CPU. [runc](https://github.com/opencontainers/runc) starts the container. Non-RISC-V containers runs with additional emulation by QEMU installed via [`tonistiigi/binfmt`](https://github.com/tonistiigi/binfmt).
+- Guest OS: Linux runs on the emulated RISC-V CPU. [runc](https://github.com/opencontainers/runc) starts the container. Non-RISC-V containers runs with additional emulation by QEMU installed via [`tonistiigi/binfmt`](https://github.com/tonistiigi/binfmt).
 - Directory Mapping: WASI filesystem API makes host directories visible to TinyEMU. TinyEMU mounts them to the guest linux via virtio-9p.
 - Packaging: [wasi-vfs](https://github.com/kateinoigakukun/wasi-vfs) (for WASI) and emscripten (for on-browser) are used for packaging the dependencies. The kernel is pre-booted during the build using [wizer](https://github.com/bytecodealliance/wizer/) to minimize the startup latency (for WASI only as of now).
 - Security: The converted container runs in the sandboxed WASM (WASI) VM with the limited access to the host system.
@@ -207,16 +207,21 @@ There are emulators that support running linux on WASM but they don't support WA
 
 ## Additional Documents
 
-- Examples (python, php, non-riscv64 image, etc.): [`./examples/`](./examples/)
+- [`./examples/`](./examples/): Examples (python, php, non-riscv64 image, etc.)
 
 ## Acknowledgement
 
 - container2wasi itself is licensed under Apache 2.0 but the generated WASM image will include third-pirty softwares:
-  - TinyEMU + BBL patch: https://bellard.org/tinyemu/
-    - contained in ([`./patches`](./patches)). TinyEMU is modified by our project for making it work with containers
-  - BBL(riscv-pk): https://github.com/riscv-software-src/riscv-pk
-  - Linux: https://github.com/torvalds/linux/
-  - tini: https://github.com/krallin/tini
-  - runc: https://github.com/opencontainers/runc
+  - TinyEMU ([MIT License](https://opensource.org/license/mit/)) https://bellard.org/tinyemu/
+    - Source code is contained in ([`./patches`](./patches)). TinyEMU is modified by our project for making it work with containers
+  - BBL(riscv-pk) ([license](https://github.com/riscv-software-src/riscv-pk/blob/master/LICENSE)): https://github.com/riscv-software-src/riscv-pk
+  - Linux ([GNU General Public License version 2](https://github.com/torvalds/linux/blob/master/COPYING)): https://github.com/torvalds/linux/
+  - tini ([MIT License](https://github.com/krallin/tini/blob/master/LICENSE)): https://github.com/krallin/tini
+  - runc ([Apache License 2.0](https://github.com/opencontainers/runc/blob/main/LICENSE)): https://github.com/opencontainers/runc
+  - Binfmt ([MIT License](https://github.com/tonistiigi/binfmt/blob/master/LICENSE)): https://github.com/tonistiigi/binfmt
+  - QEMU ([license](https://github.com/qemu/qemu/blob/master/LICENSE)): https://github.com/qemu/qemu
+  - vmtouch ([license](https://github.com/hoytech/vmtouch/blob/master/LICENSE)): https://github.com/hoytech/vmtouch
+  - BusyBox ([GNU General Public License version 2](https://www.busybox.net/license.html)): https://git.busybox.net/busybox
 
-- Emscripten integration example relies on xterm-pty for IO management: https://github.com/mame/xterm-pty
+- Emscripten integration example relies on xterm-pty for IO management
+  - xterm-pty ([MIT License](https://github.com/mame/xterm-pty/blob/main/LICENSE.txt)): https://github.com/mame/xterm-pty
