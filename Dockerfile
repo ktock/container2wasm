@@ -22,7 +22,7 @@ ARG OPTIMIZATION_MODE=wizer # "wizer" or "native"
 ARG EMSCRIPTEN_INITIAL_MEMORY=200MB
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
-ARG SOURCE_REPO_VERSION=v0.1.0
+ARG SOURCE_REPO_VERSION=v0.2.0
 
 FROM scratch AS oci-image-src
 COPY . .
