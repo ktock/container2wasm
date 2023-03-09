@@ -257,7 +257,7 @@ COPY --link --from=assets /patches/tinyemu /tinyemu
 WORKDIR /tinyemu
 RUN make -j $(nproc) -f Makefile \
     CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP= \
-    CC="emcc --embed-file /pack -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=${EMSCRIPTEN_INITIAL_MEMORY} -UEMSCRIPTEN -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1" && \
+    CC="emcc --embed-file /pack -s WASM=1 -s ASYNCIFY=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=${EMSCRIPTEN_INITIAL_MEMORY} -UEMSCRIPTEN -DON_BROWSER -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1" && \
     mkdir -p /out/ && mv temu /out/container.js && mv temu.wasm /out/
 
 FROM scratch AS js

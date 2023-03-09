@@ -58,6 +58,10 @@
 #include "wasi.h"
 #endif
 
+#ifdef ON_BROWSER
+#include <emscripten.h>
+#endif
+
 #ifndef _WIN32
 
 typedef struct {
@@ -620,6 +624,11 @@ void virt_machine_run(VirtMachine *m, int enable_stdin)
 #endif
     tv.tv_sec = delay / 1000;
     tv.tv_usec = (delay % 1000) * 1000;
+#ifdef ON_BROWSER
+    // no timeout; TODO: remove this when sleep supports timeout
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+#endif
     if (enable_stdin && init_done)
         ret = select(fd_max + 1, &rfds, &wfds, NULL, &tv);
     if (m->net) {
@@ -645,6 +654,9 @@ void virt_machine_run(VirtMachine *m, int enable_stdin)
     sdl_refresh(m);
 #endif
     
+#ifdef ON_BROWSER
+    emscripten_sleep(delay);
+#endif
     virt_machine_interp(m, MAX_EXEC_CYCLE);
 }
 
