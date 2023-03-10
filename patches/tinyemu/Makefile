@@ -103,8 +103,10 @@ CFLAGS+=-DCONFIG_X86EMU
 EMU_OBJS+=x86_cpu.o x86_machine.o ide.o ps2.o vmmouse.o pckbd.o vga.o
 endif
 
+OUTPUT_NAME=temu$(EXE)
+
 temu$(EXE): $(EMU_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(EMU_LIBS)
+	$(CC) $(LDFLAGS) -o $(OUTPUT_NAME) $^ $(EMU_LIBS)
 
 riscv_cpu32.o: riscv_cpu.c
 	$(CC) $(CFLAGS) -DMAX_XLEN=32 -c -o $@ $<
