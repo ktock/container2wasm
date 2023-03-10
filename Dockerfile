@@ -15,7 +15,8 @@ ARG INIT_DEBUG=true
 ARG VM_MEMORY_SIZE_MB=128
 ARG NO_VMTOUCH=
 
-ARG OUTPUT_NAME=out.wasm
+ARG OUTPUT_NAME=out.wasm # for wasi
+ARG JS_OUTPUT_NAME=out # for emscripten; must not include "."
 ARG OPTIMIZATION_MODE=wizer # "wizer" or "native"
 # ARG OPTIMIZATION_MODE=native
 
@@ -252,13 +253,14 @@ RUN /tools/wasi-vfs/wasi-vfs pack /tinyemu/temu --mapdir /pack::/minpack -o pack
 
 FROM emscripten/emsdk:$EMSDK_VERSION AS tinyemu-emscripten
 ARG EMSCRIPTEN_INITIAL_MEMORY
+ARG JS_OUTPUT_NAME
 COPY --link --from=vm-dev /pack /pack
 COPY --link --from=assets /patches/tinyemu /tinyemu
 WORKDIR /tinyemu
 RUN make -j $(nproc) -f Makefile \
-    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP= \
+    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP= OUTPUT_NAME=$JS_OUTPUT_NAME \
     CC="emcc --embed-file /pack -s WASM=1 -s ASYNCIFY=1 -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=${EMSCRIPTEN_INITIAL_MEMORY} -UEMSCRIPTEN -DON_BROWSER -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1" && \
-    mkdir -p /out/ && mv temu /out/container.js && mv temu.wasm /out/
+    mkdir -p /out/ && mv ${JS_OUTPUT_NAME} /out/${JS_OUTPUT_NAME}.js && mv ${JS_OUTPUT_NAME}.wasm /out/
 
 FROM scratch AS js
 COPY --link --from=tinyemu-emscripten /out/ /
