@@ -35,7 +35,7 @@ This passes `-r 'print("hello world\n");'"` argument to `php` (`ENTRYPOINT` of t
 ## Run on browser
 
 ```
-$ c2w --to-js --build-arg=EMSCRIPTEN_INITIAL_MEMORY=300MB php-ubuntu-riscv64 /tmp/phpjs/htdocs/
+$ c2w --to-js php-ubuntu-riscv64 /tmp/phpjs/htdocs/
 ```
 
 Run it on browser:
