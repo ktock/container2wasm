@@ -21,7 +21,7 @@ ARG OPTIMIZATION_MODE=wizer # "wizer" or "native"
 # ARG OPTIMIZATION_MODE=native
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
-ARG SOURCE_REPO_VERSION=v0.2.2
+ARG SOURCE_REPO_VERSION=v0.2.3
 
 FROM scratch AS oci-image-src
 COPY . .
