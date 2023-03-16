@@ -42,14 +42,14 @@ WORKDIR /work-buildroot/
 RUN git clone https://github.com/riscv-software-src/riscv-pk
 WORKDIR /work-buildroot/riscv-pk
 RUN git checkout 7e9b671c0415dfd7b562ac934feb9380075d4aa2
-# Apply patch for static HTIF address like done by TinyEMU
-# We only support riscv64. You might need more patches from TinyEMU project.
-COPY --link --from=assets /patches/bbl-static-htif-addr.diff /
-RUN cat /bbl-static-htif-addr.diff | git apply
 RUN mkdir build
 WORKDIR /work-buildroot/riscv-pk/build
 RUN ../configure --host=riscv64-linux-gnu
-RUN make
+RUN cat ../machine/htif.c ../bbl/bbl.lds
+# HTIF address needs to be static on TinyEMU
+RUN sed -i 's/volatile uint64_t tohost __attribute__((section(".htif")));/#define tohost *(uint64_t*)0x40008000/' ../machine/htif.c && \
+    sed -i 's/volatile uint64_t fromhost __attribute__((section(".htif")));/#define fromhost *(uint64_t*)0x40008008/' ../machine/htif.c
+RUN make bbl
 RUN riscv64-linux-gnu-objcopy -O binary bbl bbl.bin && \
     mkdir /out/ && \
     mv bbl.bin /out/
