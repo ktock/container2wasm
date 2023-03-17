@@ -1,22 +1,22 @@
 package main
 
 import (
-	"os"
+	"bytes"
 	"context"
 	crand "crypto/rand"
-	"bytes"
-	"io"
 	"flag"
+	"io"
+	"os"
 	"strings"
-	
+
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
 )
 
-func main(){
+func main() {
 	var (
-		mapDir   = flag.String("mapdir", "", "directory mapping to the image")
+		mapDir = flag.String("mapdir", "", "directory mapping to the image")
 	)
 
 	flag.Parse()
@@ -29,8 +29,8 @@ func main(){
 		}
 		fsConfig = fsConfig.WithDirMount(m[1], m[0])
 	}
-	
-	ctx := context.TODO()
+
+	ctx := context.Background()
 	c, err := os.ReadFile(args[0])
 	if err != nil {
 		panic(err)
@@ -40,14 +40,11 @@ func main(){
 		r.Close(ctx)
 	}()
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
-	if _, err := r.NewHostModuleBuilder("env").Instantiate(ctx); err != nil {
-		panic(err)
-	}
 	compiled, err := r.CompileModule(ctx, c)
 	if err != nil {
 		panic(err)
 	}
-	// we forciblly enable non-blocking read of stdin.
+	// we forcibly enable non-blocking read of stdin.
 	_, err = r.InstantiateModule(ctx, compiled,
 		wazero.NewModuleConfig().WithSysWalltime().WithSysNanotime().WithSysNanosleep().WithRandSource(crand.Reader).WithStdout(os.Stdout).WithStderr(os.Stderr).WithStdin(newNonBlockReader(os.Stdin)).WithFSConfig(fsConfig).WithArgs(append([]string{"arg0"}, args[1:]...)...))
 	if err != nil {
@@ -60,15 +57,15 @@ func main(){
 }
 
 type nonBlockReader struct {
-	buf *bytes.Buffer
+	buf    *bytes.Buffer
 	closed bool
 }
 
 func newNonBlockReader(r io.Reader) io.Reader {
 	buf := new(bytes.Buffer) // TODO: FIXME: handle the situation where written bytes exceed the buffer size
 	br := &nonBlockReader{buf: buf}
-	go func(){
-		defer func(){
+	go func() {
+		defer func() {
 			br.closed = true
 		}()
 		var p [1]byte
@@ -83,7 +80,7 @@ func newNonBlockReader(r io.Reader) io.Reader {
 			if n > 0 {
 				buf.Write(p[:])
 			}
-			
+
 		}
 	}()
 	return br
