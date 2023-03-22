@@ -21,7 +21,7 @@ const defaultOutputFile = "out.wasm"
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "ctw"
+	app.Name = "c2w"
 	app.Version = version.Version
 	app.Usage = "container to wasm converter"
 	app.UsageText = fmt.Sprintf("%s [options] image-name [output file]", app.Name)
