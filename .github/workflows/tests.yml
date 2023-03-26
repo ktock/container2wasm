@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/setup-go@v4
       with:
-        go-version: '1.19.x'
+        go-version: '1.20.x'
     - uses: actions/checkout@v3
     - name: Build all
       run: |
@@ -58,7 +58,7 @@ jobs:
     steps:
     - uses: actions/setup-go@v4
       with:
-        go-version: 1.19.x
+        go-version: 1.20.x
     - uses: actions/checkout@v3
       with:
         fetch-depth: 100
