@@ -34,6 +34,8 @@ RUN git clone -b ${SOURCE_REPO_VERSION} ${SOURCE_REPO} /assets
 FROM scratch AS assets
 COPY --link --from=assets-base /assets /
 
+FROM golang:1.20-bullseye AS golang-base
+
 FROM ubuntu:22.04 AS gcc-riscv64-linux-gnu-base
 RUN apt-get update && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make
 
@@ -76,7 +78,7 @@ RUN make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- olddefconfig
 FROM scratch AS linux-config
 COPY --link --from=linux-config-dev /work-buildlinux/linux/.config /
 
-FROM golang:1.19-bullseye AS bundle-dev
+FROM golang-base AS bundle-dev
 ARG TARGETPLATFORM
 ARG INIT_DEBUG
 ARG OPTIMIZATION_MODE
@@ -105,14 +107,14 @@ RUN mkdir -p /out/oci/rootfs /out/oci/bundle /out/etc && \
                 /oci "${TARGETPLATFORM}" /out/oci/rootfs && \
     mv image.json spec.json /out/oci/ && mv initconfig.json /out/etc/
 
-FROM golang:1.19-bullseye AS init-dev
+FROM golang-base AS init-dev
 COPY --link --from=assets / /work
 WORKDIR /work
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     GOARCH=riscv64 go build -ldflags "-s -w -extldflags '-static'" -tags "osusergo netgo static_build" -o /out/init ./cmd/init
 
-FROM golang:1.19-bullseye AS runc-dev
+FROM golang-base AS runc-dev
 RUN apt-get update -y && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make gperf
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
