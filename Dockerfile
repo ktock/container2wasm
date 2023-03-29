@@ -7,6 +7,7 @@ ARG WASI_VFS_VERSION=ddbea0e2a6a1e0e8fe0373ec3d1bdccf522178ab
 ARG WIZER_VERSION=04e49c989542f2bf3a112d60fbf88a62cce2d0d0
 ARG EMSDK_VERSION=3.1.34
 ARG BUSYBOX_VERSION=1_36_0
+ARG RUNC_VERSION=v1.1.5
 
 # ARG LINUX_LOGLEVEL=0
 # ARG INIT_DEBUG=false
@@ -115,11 +116,13 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     GOARCH=riscv64 go build -ldflags "-s -w -extldflags '-static'" -tags "osusergo netgo static_build" -o /out/init ./cmd/init
 
 FROM golang-base AS runc-dev
+ARG RUNC_VERSION
 RUN apt-get update -y && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make gperf
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     git clone https://github.com/opencontainers/runc.git /go/src/github.com/opencontainers/runc && \
     cd /go/src/github.com/opencontainers/runc && \
+    git checkout "${RUNC_VERSION}" && \
     # mkdir -p /opt/libseccomp && ./script/seccomp.sh "2.5.4" /opt/libseccomp riscv64 && \
     make static GOARCH=riscv64 CC=riscv64-linux-gnu-gcc EXTRA_LDFLAGS='-s -w' BUILDTAGS="" && \
     mkdir -p /out/ && mv runc /out/runc
