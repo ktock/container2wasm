@@ -191,7 +191,7 @@ The following shows the techniqual details:
 
 ## Similar projects
 
-There are several container runtimes support running WASM applications but they don't run containers on WASM.
+There are several container runtimes support running WASM applications, but they don't run containers on WASM.
 
 - WASM on container runtimes
   - Docker+Wasm integration: https://docs.docker.com/desktop/wasm/
@@ -200,7 +200,7 @@ There are several container runtimes support running WASM applications but they 
   - crun: https://github.com/containers/crun
   - krustlet: https://github.com/krustlet/krustlet
 
-There are emulators that support running linux on WASM but they don't support WASI.
+There are emulators that support running linux on WASM, but they don't support WASI.
 
 - x86 on WASM
   - v86: https://github.com/copy/v86
@@ -210,7 +210,7 @@ There are emulators that support running linux on WASM but they don't support WA
 
 ## Additional Documents
 
-- [`./examples/`](./examples/): Examples (python, php, non-riscv64 image, etc.)
+- [`./examples/`](./examples): Examples (python, php, non-riscv64 image, etc.)
 
 ## Acknowledgement
 

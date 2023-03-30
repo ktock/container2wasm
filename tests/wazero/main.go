@@ -11,7 +11,6 @@ import (
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
-	"github.com/tetratelabs/wazero/sys"
 )
 
 func main() {
@@ -48,9 +47,6 @@ func main() {
 	_, err = r.InstantiateModule(ctx, compiled,
 		wazero.NewModuleConfig().WithSysWalltime().WithSysNanotime().WithSysNanosleep().WithRandSource(crand.Reader).WithStdout(os.Stdout).WithStderr(os.Stderr).WithStdin(newNonBlockReader(os.Stdin)).WithFSConfig(fsConfig).WithArgs(append([]string{"arg0"}, args[1:]...)...))
 	if err != nil {
-		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() == 0 {
-			return
-		}
 		panic(err)
 	}
 	return
