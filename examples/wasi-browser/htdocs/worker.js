@@ -1,28 +1,72 @@
 importScripts("https://cdn.jsdelivr.net/npm/xterm-pty@0.9.4/workerTools.js");
 importScripts(location.origin + "/browser_wasi_shim/index.js");
 importScripts(location.origin + "/browser_wasi_shim/wasi_defs.js");
+importScripts(location.origin + "/worker-util.js");
+importScripts(location.origin + "/wasi-util.js");
 
 onmessage = (msg) => {
+    if (serveIfInitMsg(msg)) {
+        return;
+    }
     var ttyClient = new TtyClient(msg.data);
     var args = [];
     var env = [];
     var fds = [];
-    var wasi = new WASI(args, env, fds);
-    wasiHack(ttyClient, wasi);
-    fetch(location.origin + "/out.wasm", { credentials: 'same-origin' }).then((resp) => {
+    var netParam = getNetParam();
+    var listenfd = 3;
+    fetch(getImagename(), { credentials: 'same-origin' }).then((resp) => {
         resp['arrayBuffer']().then((wasm) => {
-            WebAssembly.instantiate(wasm, {
-                "wasi_snapshot_preview1": wasi.wasiImport,
-            }).then((inst) => {
-                wasi.start(inst.instance);
-            });
+            if (netParam) {
+                if (netParam.mode == 'delegate') {
+                    args = ['arg0', '--net=qemu', '--mac', genmac()];
+                } else if (netParam.mode == 'browser') {
+                    recvCert().then((cert) => {
+                        var certDir = getCertDir(cert);
+                        fds = [
+                            undefined, // 0: stdin
+                            undefined, // 1: stdout
+                            undefined, // 2: stderr
+                            certDir,   // 3: certificates dir
+                            undefined, // 4: socket listenfd
+                            undefined, // 5: accepted socket fd (multi-connection is unsupported)
+                            // 6...: used by wasi shim
+                        ];
+                        args = ['arg0', '--net=qemu=listenfd=4', '--mac', genmac()];
+                        env = [
+                            "SSL_CERT_FILE=/.wasmenv/proxy.crt",
+                            "https_proxy=http://192.168.127.253:80",
+                            "http_proxy=http://192.168.127.253:80",
+                            "HTTPS_PROXY=http://192.168.127.253:80",
+                            "HTTP_PROXY=http://192.168.127.253:80"
+                        ];
+                        listenfd = 4;
+                        startWasi(wasm, ttyClient, args, env, fds, listenfd, 5);
+                    });
+                    return;
+                }
+            }
+            startWasi(wasm, ttyClient, args, env, fds, listenfd, 5);
         })
-    })
+    });
 };
 
+function startWasi(wasm, ttyClient, args, env, fds, listenfd, connfd) {
+    var wasi = new WASI(args, env, fds);
+    wasiHack(wasi, ttyClient, connfd);
+    wasiHackSocket(wasi, listenfd, connfd);
+    WebAssembly.instantiate(wasm, {
+        "wasi_snapshot_preview1": wasi.wasiImport,
+    }).then((inst) => {
+        wasi.start(inst.instance);
+    });
+}
+
 // wasiHack patches wasi object for integrating it to xterm-pty.
-function wasiHack(ttyClient, wasi) {
+function wasiHack(wasi, ttyClient, connfd) {
+    // definition from wasi-libc https://github.com/WebAssembly/wasi-libc/blob/wasi-sdk-19/expected/wasm32-wasi/predefined-macros.txt
     const ERRNO_INVAL = 28;
+    const ERRNO_AGAIN= 6;
+    var _fd_read = wasi.wasiImport.fd_read;
     wasi.wasiImport.fd_read = (fd, iovs_ptr, iovs_len, nread_ptr) => {
         if (fd == 0) {
             var buffer = new DataView(wasi.inst.exports.memory.buffer);
@@ -40,9 +84,13 @@ function wasiHack(ttyClient, wasi) {
             }
             buffer.setUint32(nread_ptr, nread, true);
             return 0;
+        } else {
+            console.log("fd_read: unknown fd " + fd);
+            return _fd_read.apply(wasi.wasiImport, [fd, iovs_ptr, iovs_len, nread_ptr]);
         }
         return ERRNO_INVAL;
     }
+    var _fd_write = wasi.wasiImport.fd_write;
     wasi.wasiImport.fd_write = (fd, iovs_ptr, iovs_len, nwritten_ptr) => {
         if ((fd == 1) || (fd == 2)) {
             var buffer = new DataView(wasi.inst.exports.memory.buffer);
@@ -60,6 +108,9 @@ function wasiHack(ttyClient, wasi) {
             }
             buffer.setUint32(nwritten_ptr, wtotal, true);
             return 0;
+        } else {
+            console.log("fd_write: unknown fd " + fd);
+            return _fd_write.apply(wasi.wasiImport, [fd, iovs_ptr, iovs_len, nwritten_ptr]);
         }
         return ERRNO_INVAL;
     }
@@ -69,18 +120,26 @@ function wasiHack(ttyClient, wasi) {
         }
         let buffer = new DataView(wasi.inst.exports.memory.buffer);
         let in_ = Subscription.read_bytes_array(buffer, in_ptr, nsubscriptions);
-        let isReadPoll = false;
+        let isReadPollStdin = false;
+        let isReadPollConn = false;
         let isClockPoll = false;
-        let pollSub;
+        let pollSubStdin;
+        let pollSubConn;
         let clockSub;
         let timeout = Number.MAX_VALUE;
         for (let sub of in_) {
             if (sub.u.tag.variant == "fd_read") {
-                if (sub.u.data.fd != 0) {
-                    return ERRNO_INVAL; // only fd=0 is supported as of now (FIXME)
+                if ((sub.u.data.fd != 0) && (sub.u.data.fd != connfd)) {
+                    console.log("poll_oneoff: unknown fd " + sub.u.data.fd);
+                    return ERRNO_INVAL; // only fd=0 and connfd is supported as of now (FIXME)
                 }
-                isReadPoll = true;
-                pollSub = sub;
+                if (sub.u.data.fd == 0) {
+                    isReadPollStdin = true;
+                    pollSubStdin = sub;
+                } else {
+                    isReadPollConn = true;
+                    pollSubConn = sub;
+                }
             } else if (sub.u.tag.variant == "clock") {
                 if (sub.u.data.timeout < timeout) {
                     timeout = sub.u.data.timeout
@@ -88,18 +147,34 @@ function wasiHack(ttyClient, wasi) {
                     clockSub = sub;
                 }
             } else {
+                console.log("poll_oneoff: unknown variant " + sub.u.tag.variant);
                 return ERRNO_INVAL; // FIXME
             }
         }
         let events = [];
-        if (isReadPoll || isClockPoll) {
-            var readable = ttyClient.onWaitForReadable(timeout / 1000000000);
-            if (readable && isReadPoll) {
+        if (isReadPollStdin || isReadPollConn || isClockPoll) {
+            var readable = false;
+            if (isReadPollStdin || (isClockPoll && timeout > 0)) {
+                readable = ttyClient.onWaitForReadable(timeout / 1000000000);
+            }
+            if (readable && isReadPollStdin) {
                 let event = new Event();
-                event.userdata = pollSub.userdata;
+                event.userdata = pollSubStdin.userdata;
                 event.error = 0;
                 event.type = new EventType("fd_read");
                 events.push(event);
+            }
+            if (isReadPollConn) {
+                var sockreadable = sockWaitForReadable();
+                if (sockreadable == errStatus) {
+                    return ERRNO_INVAL;
+                } else if (sockreadable == true) {
+                    let event = new Event();
+                    event.userdata = pollSubConn.userdata;
+                    event.error = 0;
+                    event.type = new EventType("fd_read");
+                    events.push(event);
+                }
             }
             if (isClockPoll) {
                 let event = new Event();
@@ -116,129 +191,22 @@ function wasiHack(ttyClient, wasi) {
     }
 }
 
-////////////////////////////////////////////////////////////
-//
-// event-related classes adopted from the on-going discussion
-// towards poll_oneoff support in browser_wasi_sim project.
-// Ref: https://github.com/bjorn3/browser_wasi_shim/issues/14#issuecomment-1450351935
-//
-////////////////////////////////////////////////////////////
-
-class EventType {
-    /*:: variant: "clock" | "fd_read" | "fd_write"*/
-
-    constructor(variant/*: "clock" | "fd_read" | "fd_write"*/) {
-        this.variant = variant;
-    }
-
-    static from_u8(data/*: number*/)/*: EventType*/ {
-        switch (data) {
-            case EVENTTYPE_CLOCK:
-                return new EventType("clock");
-            case EVENTTYPE_FD_READ:
-                return new EventType("fd_read");
-            case EVENTTYPE_FD_WRITE:
-                return new EventType("fd_write");
-            default:
-                throw "Invalid event type " + String(data);
+function getNetParam() {
+    var vars = location.search.substring(1).split('&');
+    for (var i = 0; i < vars.length; i++) {
+        var kv = vars[i].split('=');
+        if (decodeURIComponent(kv[0]) == 'net') {
+            return {
+                mode: kv[1],
+                param: kv[2],
+            };
         }
     }
-
-    to_u8()/*: number*/ {
-        switch (this.variant) {
-            case "clock":
-                return EVENTTYPE_CLOCK;
-            case "fd_read":
-                return EVENTTYPE_FD_READ;
-            case "fd_write":
-                return EVENTTYPE_FD_WRITE;
-            default:
-                throw "unreachable";
-        }
-    }
+    return null;
 }
 
-class Event {
-    /*:: userdata: UserData*/
-    /*:: error: number*/
-    /*:: type: EventType*/
-    /*:: fd_readwrite: EventFdReadWrite | null*/
-
-    write_bytes(view/*: DataView*/, ptr/*: number*/) {
-        view.setBigUint64(ptr, this.userdata, true);
-        view.setUint8(ptr + 8, this.error);
-        view.setUint8(ptr + 9, 0);
-        view.setUint8(ptr + 10, this.type.to_u8());
-        // if (this.fd_readwrite) {
-        //     this.fd_readwrite.write_bytes(view, ptr + 16);
-        // }
-    }
-
-    static write_bytes_array(view/*: DataView*/, ptr/*: number*/, events/*: Array<Event>*/) {
-        for (let i = 0; i < events.length; i++) {
-            events[i].write_bytes(view, ptr + 32 * i);
-        }
-    }
-}
-
-class SubscriptionClock {
-    /*:: timeout: number*/
-
-    static read_bytes(view/*: DataView*/, ptr/*: number*/)/*: SubscriptionFdReadWrite*/ {
-        let self = new SubscriptionClock();
-        self.timeout = Number(view.getBigUint64(ptr + 8, true));
-        return self;
-    }
-}
-
-class SubscriptionFdReadWrite {
-    /*:: fd: number*/
-
-    static read_bytes(view/*: DataView*/, ptr/*: number*/)/*: SubscriptionFdReadWrite*/ {
-        let self = new SubscriptionFdReadWrite();
-        self.fd = view.getUint32(ptr, true);
-        return self;
-    }
-}
-
-class SubscriptionU {
-    /*:: tag: EventType */
-    /*:: data: SubscriptionClock | SubscriptionFdReadWrite */
-
-    static read_bytes(view/*: DataView*/, ptr/*: number*/)/*: SubscriptionU*/ {
-        let self = new SubscriptionU();
-        self.tag = EventType.from_u8(view.getUint8(ptr));
-        switch (self.tag.variant) {
-            case "clock":
-                self.data = SubscriptionClock.read_bytes(view, ptr + 8);
-                break;
-            case "fd_read":
-            case "fd_write":
-                self.data = SubscriptionFdReadWrite.read_bytes(view, ptr + 8);
-                break;
-            default:
-                throw "unreachable";
-        }
-        return self;
-    }
-}
-
-class Subscription {
-    /*:: userdata: UserData */
-    /*:: u: SubscriptionU */
-
-    static read_bytes(view/*: DataView*/, ptr/*: number*/)/*: Subscription*/ {
-        let subscription = new Subscription();
-        subscription.userdata = view.getBigUint64(ptr, true);
-        subscription.u = SubscriptionU.read_bytes(view, ptr + 8);
-        return subscription;
-    }
-
-    static read_bytes_array(view/*: DataView*/, ptr/*: number*/, len/*: number*/)/*: Array<Subscription>*/ {
-        let subscriptions = [];
-        for (let i = 0; i < len; i++) {
-            subscriptions.push(Subscription.read_bytes(view, ptr + 48 * i));
-        }
-        return subscriptions;
-    }
+function genmac(){
+    return "02:XX:XX:XX:XX:XX".replace(/X/g, function() {
+        return "0123456789ABCDEF".charAt(Math.floor(Math.random() * 16))
+    });
 }

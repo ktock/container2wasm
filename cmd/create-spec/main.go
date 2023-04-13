@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/containerd/containerd/archive"
 	"github.com/containerd/containerd/archive/compression"
@@ -244,7 +243,9 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	if config.Architecture == "amd64" {
 		p = "linux/amd64"
 	}
-	s, err := ctdoci.GenerateSpecWithPlatform(ctdCtx, nil, p, &ctdcontainers.Container{})
+	s, err := ctdoci.GenerateSpecWithPlatform(ctdCtx, nil, p, &ctdcontainers.Container{},
+		ctdoci.WithHostNamespace(specs.NetworkNamespace),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate spec: %w", err)
 	}
@@ -365,35 +366,19 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 				},
 			},
 			{
-				// FSType: "bind",
-				Src:   "/run/etc/hosts",
-				Dst:   "/etc/hosts",
-				Data:  "bind",
-				Flags: syscall.MS_BIND,
-				Dir: []inittype.DirInfo{
+				// make etc writable (e.g. by udhcpc)
+				FSType: "tmpfs",
+				Src:    "tmpfs",
+				Dst:    "/etc",
+				PostFile: []inittype.FileInfo{
 					{
-						Path: "/run/etc",
-						Mode: 0666, // TODO: better mode
-					},
-				},
-				File: []inittype.FileInfo{
-					{
-						Path:     "/run/etc/hosts",
-						Mode:     0666,
+						Path:     "/etc/hosts",
+						Mode:     0644,
 						Contents: "127.0.0.1	localhost\n",
 					},
-				},
-			},
-			{
-				// FSType: "bind",
-				Src:   "/run/etc/resolv.conf",
-				Dst:   "/etc/resolv.conf",
-				Data:  "bind",
-				Flags: syscall.MS_BIND,
-				File: []inittype.FileInfo{
 					{
-						Path:     "/run/etc/resolv.conf",
-						Mode:     0666,
+						Path:     "/etc/resolv.conf",
+						Mode:     0644,
 						Contents: "",
 					},
 				},
@@ -426,6 +411,28 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 					{
 						Path: "/run/rootfs-work",
 						Mode: 0755,
+					},
+				},
+				PostDir: []inittype.DirInfo{
+					{
+						Path: "/run/rootfs/etc/",
+						Mode: 0644,
+					},
+					{
+						Path: "/run/rootfs/etc/",
+						Mode: 0644,
+					},
+				},
+				PostFile: []inittype.FileInfo{
+					{
+						Path:     "/run/rootfs/etc/hosts",
+						Mode:     0644,
+						Contents: "127.0.0.1	localhost\n",
+					},
+					{
+						Path:     "/run/rootfs/etc/resolv.conf",
+						Mode:     0644,
+						Contents: "",
 					},
 				},
 			},

@@ -57,15 +57,31 @@
 #include "iodev/pci.h"
 #include "wasm.h"
 
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+#endif
+
+#include <sys/socket.h>
+#include <arpa/inet.h>
+// not defined in wasi-libc
+#ifdef WASI
+#define PF_INET 1
+#define PF_INET6 2
+#endif
+
+#define LOG_THIS genlog->
+
 /////////////////////////////////////////////////////////////////////////
 // Register mapdir device via viritio-9p
 /////////////////////////////////////////////////////////////////////////
 bx_virtio_9p_ctrl_c *wasi0;
 bx_virtio_9p_ctrl_c *wasi1;
-FSVirtFile *info;
+FSVirtFile *info = NULL;
 
 FSVirtFile *get_vm_info()
 {
+  if (info == NULL)
+    info = (FSVirtFile *)malloc(sizeof(FSVirtFile));
   return info;
 }
 
@@ -91,8 +107,7 @@ PLUGIN_ENTRY_FOR_MODULE(mapdirVirtio9p)
 PLUGIN_ENTRY_FOR_MODULE(packVirtio9p)
 {
   if (mode == PLUGIN_INIT) {
-    info = (FSVirtFile *)malloc(sizeof(FSVirtFile));
-    FSDevice *wasi1fs = fs_disk_init_with_info("pack", "info", info);
+    FSDevice *wasi1fs = fs_disk_init_with_info("pack", "info", get_vm_info());
     wasi1 = new bx_virtio_9p_ctrl_c(BX_PLUGIN_PACK_VIRTIO_9P, "wasi1", wasi1fs);
     BX_REGISTER_DEVICE_DEVMODEL(plugin, type, wasi1, BX_PLUGIN_PACK_VIRTIO_9P);
   } else if (mode == PLUGIN_FINI) {
@@ -246,6 +261,27 @@ PLUGIN_ENTRY_FOR_MODULE(stdioVirtioConsole)
   return 0; // Success
 }
 
+bx_virtio_net_ctrl_c *qemu0;
+EthernetDevice *qemu_net;
+static EthernetDevice *qemu_net_init();
+
+PLUGIN_ENTRY_FOR_MODULE(qemuVirtioNet)
+{
+  if (mode == PLUGIN_INIT) {
+    qemu_net = qemu_net_init();
+    qemu0 = new bx_virtio_net_ctrl_c(BX_PLUGIN_QEMU_VIRTIO_NET, qemu_net);
+    BX_REGISTER_DEVICE_DEVMODEL(plugin, type, qemu0, BX_PLUGIN_QEMU_VIRTIO_NET);
+  } else if (mode == PLUGIN_FINI) {
+    delete qemu0;
+  } else if (mode == PLUGIN_PROBE) {
+    return (int)PLUGTYPE_STANDARD;
+  } else if (mode == PLUGIN_FLAGS) {
+    return PLUGFLAG_PCI;
+  }
+  return 0; // Success
+}
+
+
 /////////////////////////////////////////////////////////////////////////
 // WASI preopens
 /////////////////////////////////////////////////////////////////////////
@@ -398,6 +434,14 @@ void *mallocz(size_t size)
         return NULL;
     memset(ptr, 0, size);
     return ptr;
+}
+
+static inline int max_int(int a, int b)
+{
+    if (a > b)
+        return a;
+    else
+        return b;
 }
 
 static inline int min_int(int a, int b)
@@ -1268,7 +1312,7 @@ bx_virtio_ctrl_c::bx_virtio_ctrl_c()
 bx_virtio_ctrl_c::~bx_virtio_ctrl_c()
 {
   SIM->get_bochs_root()->remove("virtio");
-  // BX_DEBUG(("Exit"));
+  BX_DEBUG(("Exit"));
 }
 
 int bx_virtio_ctrl_c::pci_add_capability(Bit8u *buf, int size)
@@ -1822,7 +1866,7 @@ bx_virtio_9p_ctrl_c::bx_virtio_9p_ctrl_c(char *plugin_name, char *mount_tag, FSD
 bx_virtio_9p_ctrl_c::~bx_virtio_9p_ctrl_c()
 {
   SIM->get_bochs_root()->remove("virtio_9p");
-  // BX_DEBUG(("Exit"));
+  BX_DEBUG(("Exit"));
 }
 
 void bx_virtio_9p_ctrl_c::init()
@@ -2727,7 +2771,7 @@ bx_virtio_console_ctrl_c::bx_virtio_console_ctrl_c(char *plugin_name, CharacterD
 bx_virtio_console_ctrl_c::~bx_virtio_console_ctrl_c()
 {
   SIM->get_bochs_root()->remove("virtio_console");
-  // BX_DEBUG(("Exit"));
+  BX_DEBUG(("Exit"));
 }
 
 void bx_virtio_console_ctrl_c::init()
@@ -2886,4 +2930,399 @@ void bx_virtio_console_ctrl_c::rx_timer_handler(void *this_ptr)
     }
 }
 
+/////////////////////////////////////////////////////////////////////////
+// Virtio-net
+/////////////////////////////////////////////////////////////////////////
+bx_virtio_net_ctrl_c::bx_virtio_net_ctrl_c(char *plugin_name, EthernetDevice *es)
+{
+  put("VIRTIO NET");
+  BX_VIRTIO_NET_THIS plugin_name = plugin_name;
+  BX_VIRTIO_NET_THIS es = es; // TODO
+}
+
+bx_virtio_net_ctrl_c::~bx_virtio_net_ctrl_c()
+{
+  SIM->get_bochs_root()->remove("virtio_net");
+  BX_DEBUG(("Exit"));
+}
+
+bool bx_virtio_net_ctrl_c::virtio_net_can_write_packet(EthernetDevice *es)
+{
+    QueueState *qs = &BX_VIRTIO_THIS s.queue[0];
+    uint16_t avail_idx;
+
+    if (!qs->ready)
+        return false;
+    avail_idx = virtio_read16(qs->avail_addr + 2);
+    return qs->last_avail_idx != avail_idx;
+}
+
+void bx_virtio_net_ctrl_c::virtio_net_write_packet(EthernetDevice *es, const uint8_t *buf, int buf_len)
+{
+    VIRTIONetDevice *s1 = &BX_VIRTIO_NET_THIS net;
+    int queue_idx = 0;
+    QueueState *qs = &BX_VIRTIO_THIS s.queue[0];
+    int desc_idx;
+    VIRTIONetHeader h;
+    int len, read_size, write_size;
+    uint16_t avail_idx;
+
+    if (!qs->ready)
+        return;
+    avail_idx = virtio_read16(qs->avail_addr + 2);
+    if (qs->last_avail_idx == avail_idx)
+        return;
+    desc_idx = virtio_read16(qs->avail_addr + 4 + 
+                             (qs->last_avail_idx & (qs->num - 1)) * 2);
+    if (get_desc_rw_size(&read_size, &write_size, queue_idx, desc_idx))
+        return;
+    len = s1->header_size + buf_len; 
+    if (len > write_size)
+        return;
+    memset(&h, 0, s1->header_size);
+    memcpy_to_queue(queue_idx, desc_idx, 0, &h, s1->header_size);
+    memcpy_to_queue(queue_idx, desc_idx, s1->header_size, (void*)buf, buf_len);
+    virtio_consume_desc(queue_idx, desc_idx, len);
+    qs->last_avail_idx++;
+}
+
+void bx_virtio_net_ctrl_c::init()
+{
+  bx_virtio_ctrl_c::init(BX_VIRTIO_NET_THIS plugin_name, 0x1000, 0x0200, 0x1, 1 << 5, "Virtio-net"); // initialize as virtio-net
+
+  BX_VIRTIO_NET_THIS config_space_size = 6 + 2;
+  Bit8u *cfg;
+  cfg = BX_VIRTIO_NET_THIS config_space;
+  memcpy(cfg, BX_VIRTIO_NET_THIS es->mac_addr, 6);
+  /* status */
+  cfg[6] = 0;
+  cfg[7] = 0;
+  QueueState *qs = &BX_VIRTIO_NET_THIS s.queue[0];
+  qs->manual_recv = true;
+  BX_VIRTIO_NET_THIS net.header_size = sizeof(VIRTIONetHeader);
+  BX_VIRTIO_NET_THIS es->virtio_device = this;
+  BX_VIRTIO_NET_THIS timer_id = DEV_register_timer(this, rx_timer_handler, 0, false, false, "virtio-net.rx");;
+  bx_pc_system.activate_timer(BX_VIRTIO_NET_THIS timer_id, 100, false); /* not continuous */
+}
+
+void bx_virtio_net_ctrl_c::rx_timer_handler(void *this_ptr)
+{
+    bx_virtio_net_ctrl_c *class_ptr = (bx_virtio_net_ctrl_c *)this_ptr;
+    EthernetDevice *es = class_ptr->es;
+    int n_fd_max = -1, delay = 0, n_ret = 0;
+    fd_set n_rfds, n_wfds, n_efds;
+    struct timeval tv;
+
+    FD_ZERO(&n_rfds);
+    FD_ZERO(&n_wfds);
+    FD_ZERO(&n_efds);
+    es->select_fill(es, &n_fd_max, &n_rfds, &n_wfds, &n_efds, &delay);
+    if (n_fd_max >= 0) {
+      tv.tv_sec = 0;
+      tv.tv_usec = 0;
+      n_ret = select(n_fd_max + 1, &n_rfds, NULL, NULL, &tv);
+      es->select_poll(es, &n_rfds, &n_wfds, &n_efds, n_ret);
+    }
+    int watch_res = es->watch(es);
+    int duration = 100;
+    if (watch_res < 0) {
+      duration = 1000000;
+    } else if (n_ret <= 0) {
+      duration = 100000;
+    }
+    bx_pc_system.activate_timer(class_ptr->timer_id, duration, false); /* not continuous */
+}
+
+int bx_virtio_net_ctrl_c::device_recv(int queue_idx, int desc_idx, int read_size, int write_size)
+{
+    VIRTIONetDevice *s1 = &BX_VIRTIO_NET_THIS net;
+    EthernetDevice *es = BX_VIRTIO_NET_THIS es;
+    VIRTIONetHeader h;
+    uint8_t *buf;
+    int len;
+
+    if (queue_idx == 1) {
+        /* send to network */
+        if (memcpy_from_queue(&h, queue_idx, desc_idx, 0, s1->header_size) < 0)
+            return 0;
+        len = read_size - s1->header_size;
+        buf = (uint8_t *)malloc(len);
+        memcpy_from_queue(buf, queue_idx, desc_idx, s1->header_size, len);
+        es->write_packet(es, buf, len);
+        free(buf);
+        virtio_consume_desc(queue_idx, desc_idx, 0);
+    }
+    return 0;
+}
+
+typedef struct {
+    int fd;
+    bool select_filled;
+    char *raw_flag;
+
+    int tmpfd;
+    bool enabled;
+    int retrynum;
+
+    uint32_t sizebuf;
+    int sizeoff;
+    int pktsize;
+    int pktoff;
+    uint8_t *pktbuf;
+} QemuSocketState;
+
+static void qemu_write_packet(EthernetDevice *net,
+                               const uint8_t *buf, int len)
+{
+    QemuSocketState *s = (QemuSocketState *)net->opaque;
+    uint32_t size = htonl(len);
+    int ret;
+
+    if (s->fd < 0) {
+      return;
+    }
+
+    ret = send(s->fd, &size, 4, 0); // TODO: check error
+    if (ret < 0) {
+      close(s->fd);
+      s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
+      return;
+    }
+    ret = send(s->fd, buf, len, 0); // TODO: check error
+    if (ret < 0) {
+      close(s->fd);
+      s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
+      return;
+    }
+}
+
+static int try_get_fd(QemuSocketState *s);
+
+static int qemu_watch1(EthernetDevice *net)
+{
+  QemuSocketState *s = (QemuSocketState *)net->opaque;
+
+  if (!s->enabled)
+    return -1;
+
+  if ((s->fd >= 0) || (try_get_fd((QemuSocketState *)net->opaque) >= 0))
+    return 0;
+
+  return -1;
+}
+
+static void qemu_select_fill1(EthernetDevice *net, int *pfd_max,
+                               fd_set *rfds, fd_set *wfds, fd_set *efds,
+                               int *pdelay)
+{
+   QemuSocketState *s = (QemuSocketState *)net->opaque;
+   int fd = s->fd;
+
+   if (fd < 0) {
+     return;
+   }
+
+   s->select_filled = net->virtio_device->virtio_net_can_write_packet(net);
+   if (s->select_filled) {
+       FD_SET(fd, rfds);
+       *pfd_max = max_int(*pfd_max, fd);
+   }
+}
+
+static void qemu_select_poll1(EthernetDevice *net, 
+                               fd_set *rfds, fd_set *wfds, fd_set *efds,
+                               int select_ret)
+{
+   QemuSocketState *s = (QemuSocketState *)net->opaque;
+   int fd = s->fd;
+   uint32_t size = 0;
+   int ret;
+   
+   if (fd < 0) {
+     return;
+   }
+
+   if (select_ret <= 0) {
+     if (select_ret < 0) {
+       fflush(stdout);
+       close(s->fd);
+       s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
+     }
+     return;
+   }
+
+   if (s->select_filled && FD_ISSET(fd, rfds)) {
+     if (s->pktsize <= 0) {
+       while (s->sizeoff < 4) {
+         ret = recv(fd, &s->sizebuf + s->sizeoff, 4 - s->sizeoff, 0);
+         if (ret <= 0) {
+           if (errno == EAGAIN)
+             return; // try later
+           close(s->fd);
+           s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
+           return;
+         }
+         s->sizeoff += ret;
+       }
+       s->pktsize = ntohl(s->sizebuf);
+       s->sizeoff = 0;
+       s->sizebuf = 0;
+     }
+
+     if (s->pktsize > 0) {
+       size = s->pktsize;
+       if (s->pktbuf == NULL) {
+         s->pktoff = 0;
+         s->pktbuf = (uint8_t *)mallocz(size); // TODO: make limit
+       }
+       while (s->pktoff < size) {
+         ret = recv(fd, s->pktbuf + s->pktoff, size - s->pktoff, 0);
+         if (ret <= 0) {
+           if (errno == EAGAIN)
+             return; // try later
+           close(s->fd);
+           s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
+           return;
+         }
+         s->pktoff += ret;
+       }
+       net->virtio_device->virtio_net_write_packet(net, s->pktbuf, size);
+       free(s->pktbuf);
+       s->pktbuf = NULL;
+       s->pktsize = 0;
+       s->pktoff = 0;
+     }
+   }
+}
+
+static EthernetDevice *qemu_net_init()
+{
+    EthernetDevice *net;
+    QemuSocketState *s;
+
+    net = (EthernetDevice *)mallocz(sizeof(*net));
+    net->mac_addr[0] = 0x02;
+    net->mac_addr[1] = 0x00;
+    net->mac_addr[2] = 0x00;
+    net->mac_addr[3] = 0x00;
+    net->mac_addr[4] = 0x00;
+    net->mac_addr[5] = 0x01;
+    net->opaque = NULL;
+    s = (QemuSocketState *)mallocz(sizeof(*s));
+    s->fd = -1;
+    s->tmpfd = -1;
+    s->enabled = false;
+    net->opaque = s;
+    net->write_packet = qemu_write_packet;
+    net->select_fill = qemu_select_fill1;
+    net->select_poll = qemu_select_poll1;
+    net->watch = qemu_watch1;
+
+    return net;
+}
+
+static void reset_qemu_socket_state(QemuSocketState *s)
+{
+    s->sizebuf = 0;
+    s->sizeoff = 0;
+    s->pktsize = 0;
+    s->pktoff = 0;
+    if (s->pktbuf != NULL) {
+      free(s->pktbuf);
+    }
+    s->pktbuf = NULL;
+}
+
+#ifdef EMSCRIPTEN
+static int try_get_fd(QemuSocketState *s)
+{
+    int sock= s->fd;
+    fd_set wfds;
+    struct sockaddr_in qemuAddr;
+
+    if (s->tmpfd < 0) {
+      if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+        BX_INFO(("failed to prepare socket: %s", strerror(errno)));
+        return -1;
+      }
+      // connect to the proxy
+      memset(&qemuAddr, 0, sizeof(qemuAddr));
+      qemuAddr.sin_family = AF_INET;
+      int cret = connect(sock, (struct sockaddr *) &qemuAddr, sizeof(qemuAddr));
+      bool connected = false;
+      if ((cret == 0) || (errno == EISCONN)) {
+        BX_INFO(("socket connected"));
+        s->fd = sock;
+        s->tmpfd = -1;
+        reset_qemu_socket_state(s);
+        return 0;
+      } else if (errno != EINPROGRESS) {
+        BX_INFO(("failed to connect: %s", strerror(errno)));
+        s->fd = -1;
+        s->tmpfd = -1;
+        return -1;
+      }
+      s->retrynum = 0;
+      s->tmpfd = sock;
+    }
+
+    BX_INFO(("waiting for connection..."));
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    FD_ZERO(&wfds);
+    FD_SET(s->tmpfd, &wfds);
+    int sret = select(s->tmpfd + 1, NULL, &wfds, NULL, &tv);
+    if (sret > 0) {
+      s->fd = s->tmpfd;
+      s->tmpfd = -1;
+      reset_qemu_socket_state(s);
+      return 0;
+    } else if (sret < 0) {
+      s->fd = -1;
+      s->tmpfd = -1;
+    } // else, still wait for the connection.
+    BX_INFO(("select result: %d", sret));
+
+    s->retrynum++;
+    if (s->retrynum > 5) { // TODO: make max retry number configurable
+      close(s->tmpfd);
+      s->tmpfd = -1; // too many errors. retry connection.
+    }
+
+    return -1;
+}
+#elif defined(WASI)
+static int try_get_fd(QemuSocketState *s)
+{
+  int sock = 3;
+  if ((s->raw_flag != NULL) && (!strncmp(s->raw_flag, "qemu=", 5))) {
+    // TODO: allow specifying more options
+    if (!strncmp(s->raw_flag + 5, "listenfd=", 9)) {
+      sock = atoi(s->raw_flag + 5 + 9);
+    }
+  }
+  int sock_a = 0;
+  // wait for connection
+  BX_INFO(("accept trying...(sockfd=%d)", sock));
+  sock_a = accept4(sock, NULL, NULL, SOCK_NONBLOCK);
+  if (sock_a > 0) {
+    BX_INFO(("accepted fd=%d", sock_a));
+    s->fd = sock_a;
+    reset_qemu_socket_state(s);
+    return 0;
+  }
+  BX_INFO(("failed to accept socket: %s", strerror(errno)));
+  return -1;
+}
+#endif
+
+int start_qemu_net(char *flag)
+{
+  if (qemu_net != NULL) {
+    ((QemuSocketState *)qemu_net->opaque)->enabled = true;
+    ((QemuSocketState *)qemu_net->opaque)->raw_flag = flag;
+  }
+  return 0;
+}
 #endif /* BX_SUPPORT_PCI */

@@ -4,18 +4,24 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"gotest.tools/v3/assert"
 )
 
 // Defined in Dockerfile.test.
 // TODO: Make it a flag
-const assetPath = "/test/"
+const AssetPath = "/test/"
+const C2wBin = "c2w"
+const C2wNetProxyBin = "/opt/c2w-net-proxy.wasm"
 
 type Architecture int
 
@@ -43,23 +49,24 @@ type Input struct {
 	Image        string
 	ConvertOpts  []string
 	Architecture Architecture
+	Dockerfile   string
 }
 
 type TestSpec struct {
-	Name        string
-	Inputs      []Input
-	Prepare     func(t *testing.T, workdir string)
-	Finalize    func(t *testing.T, workdir string)
-	ImageName   string // default: test.wasm
-	Runtime     string
-	RuntimeOpts func(t *testing.T, workdir string) []string
-	Args        func(t *testing.T, workdir string) []string
-	Want        func(t *testing.T, workdir string, in io.Writer, out io.Reader)
-	NoParallel  bool
+	Name           string
+	Inputs         []Input
+	Prepare        func(t *testing.T, workdir string)
+	Finalize       func(t *testing.T, workdir string)
+	ImageName      string // default: test.wasm
+	Runtime        string
+	RuntimeOpts    func(t *testing.T, workdir string) []string
+	Args           func(t *testing.T, workdir string) []string
+	Want           func(t *testing.T, workdir string, in io.Writer, out io.Reader)
+	NoParallel     bool
+	IgnoreExitCode bool
 }
 
 func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
-	c2wBin := "c2w"
 	for _, tt := range tests {
 		tt := tt
 		for _, in := range tt.Inputs {
@@ -72,10 +79,21 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 				tmpdir, err := os.MkdirTemp("", "testc2w")
 				assert.NilError(t, err)
 				t.Logf("test root: %v", tmpdir)
-				defer assert.NilError(t, os.RemoveAll(tmpdir))
+				defer func() {
+					assert.NilError(t, os.RemoveAll(tmpdir))
+				}()
+
+				if in.Dockerfile != "" {
+					df := filepath.Join(tmpdir, "Dockerfile-integrationtest")
+					assert.NilError(t, os.WriteFile(df, []byte(in.Dockerfile), 0755))
+					dcmd := exec.Command("docker", "build", "--progress=plain", "-t", in.Image, "-f", df, AssetPath)
+					dcmd.Stdout = os.Stdout
+					dcmd.Stderr = os.Stderr
+					assert.NilError(t, dcmd.Run())
+				}
 
 				testWasm := filepath.Join(tmpdir, "test.wasm")
-				c2wCmd := exec.Command(c2wBin, append(in.ConvertOpts, "--assets="+assetPath, in.Image, testWasm)...)
+				c2wCmd := exec.Command(C2wBin, append(in.ConvertOpts, "--assets="+AssetPath, in.Image, testWasm)...)
 				c2wCmd.Stdout = os.Stdout
 				c2wCmd.Stderr = os.Stderr
 				assert.NilError(t, c2wCmd.Run())
@@ -106,13 +124,20 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 				inW, err := testCmd.StdinPipe()
 				assert.NilError(t, err)
 				defer inW.Close()
+				testCmd.Stderr = os.Stderr
 
 				assert.NilError(t, testCmd.Start())
 
 				tt.Want(t, tmpdir, inW, io.TeeReader(outR, os.Stdout))
 				inW.Close()
 
-				assert.NilError(t, testCmd.Wait())
+				if !tt.IgnoreExitCode {
+					assert.NilError(t, testCmd.Wait())
+				} else {
+					if err := testCmd.Wait(); err != nil {
+						t.Logf("command test error: %v", err)
+					}
+				}
 
 				// cleanup cache
 				assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f", "--keep-storage=10GB").Run())
@@ -185,4 +210,62 @@ func readUntilPrompt(ctx context.Context, prompt string, outR io.Reader) (out []
 
 func StringFlags(opts ...string) func(t *testing.T, workdir string) []string {
 	return func(t *testing.T, workdir string) []string { return opts }
+}
+
+var usedPorts = make(map[int]struct{})
+var usedPortsMu sync.Mutex
+
+func GetPort(t *testing.T) int {
+	usedPortsMu.Lock()
+	defer usedPortsMu.Unlock()
+	for i := 8001; i < 9000; i++ {
+		if _, ok := usedPorts[i]; !ok {
+			usedPorts[i] = struct{}{}
+			return i
+		}
+	}
+	t.Fatalf("ports exhausted")
+	return -1
+}
+
+func DonePort(i int) {
+	usedPortsMu.Lock()
+	defer usedPortsMu.Unlock()
+	delete(usedPorts, i)
+}
+
+func ReadInt(t *testing.T, p string) int {
+	d, err := os.ReadFile(p)
+	assert.NilError(t, err)
+	i, err := strconv.Atoi(string(d))
+	assert.NilError(t, err)
+	return i
+}
+
+func ReadString(t *testing.T, p string) string {
+	d, err := os.ReadFile(p)
+	assert.NilError(t, err)
+	return string(d)
+}
+
+func StartHelloServer(t *testing.T) (pid int, port int) {
+	port = GetPort(t)
+	t.Logf("launching server on %d", port)
+	cmd := exec.Command("httphello", fmt.Sprintf("localhost:%d", port))
+	assert.NilError(t, cmd.Start())
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			t.Logf("hello server error: %v\n", err)
+		}
+		DonePort(port)
+	}()
+	for {
+		if cmd.Process != nil {
+			if _, err := http.Get(fmt.Sprintf("http://localhost:%d/", port)); err == nil {
+				break
+			}
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+	return cmd.Process.Pid, port
 }

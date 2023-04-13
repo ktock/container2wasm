@@ -411,10 +411,52 @@ int write_env(FSVirtFile *f, int pos1, const char *env)
   return pos - pos1;
 }
 
+int write_net(FSVirtFile *f, int pos1, const char *mac)
+{
+  int p, pos = pos1;
+
+  p = write_info(f, pos, 3, "n: ");
+  if (p < 0) {
+    return -1;
+  }
+  pos += p;
+  for (int j = 0; j < strlen(mac); j++) {
+    if (putchar_info(f, pos++, mac[j]) != 1) {
+      return -1;
+    }
+  }
+  if (putchar_info(f, pos++, '\n') != 1) {
+    return -1;
+  }
+  return pos - pos1;
+}
+
+int write_time(FSVirtFile *f, int pos1, const char *timestr)
+{
+  int p, pos = pos1;
+
+  p = write_info(f, pos, 3, "t: ");
+  if (p < 0) {
+    return -1;
+  }
+  pos += p;
+  for (int j = 0; j < strlen(timestr); j++) {
+    if (putchar_info(f, pos++, timestr[j]) != 1) {
+      return -1;
+    }
+  }
+  if (putchar_info(f, pos++, '\n') != 1) {
+    return -1;
+  }
+  return pos - pos1;
+}
+
 static struct option options[] = {
     { "help", no_argument, NULL, 'h' },
     { "no-stdin", no_argument },
     { "entrypoint", required_argument },
+    { "net", required_argument },
+    { "mac", required_argument },
     { NULL },
 };
 
@@ -426,20 +468,24 @@ void print_usage(void)
           "OPTIONS:\n"
           "  -entrypoint <command>: entrypoint command. (default: entrypoint specified in the image config)\n"
           "  -no-stdin            : disable stdin. (default: false)\n"
+          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"qemu\")\n"
+          "  -mac <mac address>   : use a custom mac address for the VM\n"
           "\n"
           "This tool is based on Bochs emulator.\n"
           );
    exit(0);
 }
 
-int init_wasi_info(int argc, char **argv, FSVirtFile *info)
+int CDECL init_func(void);
+
+int init_vm(int argc, char **argv, FSVirtFile *info)
 {
     info->contents = (char *)calloc(1024, sizeof(char));
     info->len = 0;
     info->lim = 1024;
 
     /* const char *cmdline, *build_preload_file; */
-    char *entrypoint = NULL;
+    char *entrypoint = NULL, *net = NULL, *mac = NULL;
     bool enable_stdin = true;
     int pos, c, option_index, i;
     for(;;) {
@@ -458,6 +504,12 @@ int init_wasi_info(int argc, char **argv, FSVirtFile *info)
             case 2: /* entrypoint */
                 entrypoint = optarg;
                 break;
+            case 3: /* net */
+                net = optarg;
+                break;
+            case 4: /* mac */
+                mac = optarg;
+                break;
             default:
                 fprintf(stderr, "unknown option index: %d\n", option_index);
                 exit(1);
@@ -469,6 +521,14 @@ int init_wasi_info(int argc, char **argv, FSVirtFile *info)
         default:
             exit(1);
         }
+    }
+
+    if (!vm_init_done) {
+      int ret = init_func();
+      if (ret != CI_INIT_DONE) {
+        printf("initialization failed\n");
+        return -1;
+      }
     }
 
     if (!enable_stdin) {
@@ -484,7 +544,7 @@ int init_wasi_info(int argc, char **argv, FSVirtFile *info)
       }
       pos += p;
     }
-    
+
     if (optind < argc) {
       int p = write_args(info, argc, argv, optind, pos);
       if (p < 0) {
@@ -507,17 +567,41 @@ int init_wasi_info(int argc, char **argv, FSVirtFile *info)
     }
 #endif
 
+    if (net != NULL) {
+      if (!strncmp(net, "qemu", 4)) {
+        if (start_qemu_net(net) != 0) {
+          fprintf(stderr, "failed to wait qemu net");
+          exit(1);
+        }
+      }
+      int p = write_net(info, pos, mac);
+      if (p < 0) {
+        printf("failed to prepare net info\n");
+        exit(1);
+      }
+      pos += p;
+    }
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", (unsigned)time(NULL));
+    int ps = write_time(info, pos, buf);
+    if (ps < 0) {
+      printf("failed to prepare time info\n");
+      exit(1);
+    }
+    pos += ps;
+
     info->len = pos;
 #ifdef WASI
     info->len += write_preopen_info(info, pos);
 #endif
+
     return 0;
 }
 
 int bxmain(void)
 {
   if (vm_init_done) {
-    init_wasi_info(bx_startup_flags.argc, bx_startup_flags.argv, get_vm_info());
     bx_param_enum_c *ci_param = SIM->get_param_enum(BXPN_SEL_CONFIG_INTERFACE);
     const char *ci_name = ci_param->get_selected();
     int status = SIM->configuration_interface(ci_name, CI_START);
@@ -801,15 +885,10 @@ int CDECL main(int argc, char *argv[])
     return -1;
   }
 #endif
-  if (!vm_init_done) {
-    int ret = init_func();
-    if (ret != CI_INIT_DONE) {
-      printf("initialization failed\n");
-      return -1;
-    }
+  if (init_vm(argc, argv, get_vm_info()) < 0) {
+    fprintf(stderr, "failed to init vm");
+    return -1;
   }
-  bx_startup_flags.argc = argc;
-  bx_startup_flags.argv = argv;
   return start_vm();
 }
 #endif

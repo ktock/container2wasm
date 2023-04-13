@@ -22,6 +22,8 @@ jobs:
         make
         ls -al ./out/c2w
         if ldd ./out/c2w ; then echo "must be static binary" ; exit 1 ; fi
+        ls -al ./out/c2w-net
+        if ldd ./out/c2w-net ; then echo "must be static binary" ; exit 1 ; fi
 
   test:
     runs-on: ubuntu-22.04
@@ -30,16 +32,15 @@ jobs:
       fail-fast: false
       matrix:
         target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
+        arch: ["x86_64", "(riscv64|aarch64)"]
     steps:
     - uses: actions/checkout@v4
-    - name: x86_64
-      env:
-        GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=x86_64.*
+    - name: binfmt
       run: |
-        make test
-    - name: riscv64
+        docker run --privileged --rm tonistiigi/binfmt --install riscv64
+    - name: test
       env:
-        GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=(riscv64|aarch64).*
+        GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=${{ matrix.arch }}.*
       run: |
         make test
 

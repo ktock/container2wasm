@@ -79,6 +79,7 @@ extern "C" {
 #define BX_PLUGIN_MAPDIR_VIRTIO_9P "mapdirVirtio9p"
 #define BX_PLUGIN_PACK_VIRTIO_9P "packVirtio9p"
 #define BX_PLUGIN_STDIO_VIRTIO_CONSOLE "stdioVirtioConsole"
+#define BX_PLUGIN_QEMU_VIRTIO_NET "qemuVirtioNet"
 
 #define BX_REGISTER_DEVICE_DEVMODEL(a,b,c,d) pluginRegisterDeviceDevmodel(a,b,c,d)
 #define BX_UNREGISTER_DEVICE_DEVMODEL(a,b) pluginUnregisterDeviceDevmodel(a,b)
@@ -495,6 +496,7 @@ PLUGIN_ENTRY_FOR_IMG_MODULE(vvfat);
 PLUGIN_ENTRY_FOR_MODULE(mapdirVirtio9p);
 PLUGIN_ENTRY_FOR_MODULE(packVirtio9p);
 PLUGIN_ENTRY_FOR_MODULE(stdioVirtioConsole);
+PLUGIN_ENTRY_FOR_MODULE(qemuVirtioNet);
 #endif
 
 #ifdef __cplusplus

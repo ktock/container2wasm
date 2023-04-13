@@ -9,6 +9,8 @@ The difference between this and [emscripten example](../emscripten) is that this
 This example leverages polyfill library [browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim) provides WASI APIs to the WASM binary on browser.
 We integrated that WASI polyfill's IO to xterm-pty for allowing the user connecting to that container via the terminal.
 
+Examples of enabling networking can be found at [`./../networking`](./../networking/).
+
 ## Example
 
 ![Ubuntu container on browser](../../docs/images/ubuntu-wasi-on-browser.png)

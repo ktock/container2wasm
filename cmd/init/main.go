@@ -20,7 +20,7 @@ import (
 
 const (
 	// initConfigPath is path to the config file used by this init process.
-	initConfigPath = "/etc/initconfig.json"
+	initConfigPath = "/oci/initconfig.json"
 
 	// wasi0: wasi root directory
 	rootFSTag = "wasi0"
@@ -157,7 +157,9 @@ func doInit() error {
 		return err
 	}
 	log.Printf("INFO:\n%s\n", string(infoD))
-	s = patchSpec(s, infoD, imageConfig)
+	var withNet bool
+	var mac string
+	s, withNet, mac = patchSpec(s, infoD, imageConfig)
 	log.Printf("Running: %+v\n", s.Process.Args)
 	sd, err := json.Marshal(s)
 	if err != nil {
@@ -165,6 +167,31 @@ func doInit() error {
 	}
 	if err := os.WriteFile(filepath.Join(cfg.Container.BundlePath, "config.json"), sd, 0600); err != nil {
 		return err
+	}
+
+	if withNet {
+		if mac != "" {
+			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "down").CombinedOutput(); err != nil {
+				return fmt.Errorf("failed eth0 down: %v: %w", string(o), err)
+			}
+			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "address", mac).CombinedOutput(); err != nil {
+				return fmt.Errorf("failed change mac address of eth0: %v: %w", string(o), err)
+			}
+		}
+		if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "up").CombinedOutput(); err != nil {
+			return fmt.Errorf("failed eth0 up: %v: %w", string(o), err)
+		}
+		if o, err := exec.Command("udhcpc", "-i", "eth0").CombinedOutput(); err != nil {
+			return fmt.Errorf("failed udhcpc: %w", err)
+		} else if cfg.Debug {
+			o2, _ := exec.Command("ip", "a").CombinedOutput()
+			log.Printf("finished udhcpc: %s\n %s\n", string(o), string(o2))
+		}
+		for _, f := range []string{"/etc/hosts", "/etc/resolv.conf"} {
+			if err := syscall.Mount(f, filepath.Join("/run/rootfs", f), "", syscall.MS_BIND, ""); err != nil {
+				return fmt.Errorf("cannot mount %q: %w", f, err)
+			}
+		}
 	}
 
 	var lastErr error
@@ -219,6 +246,23 @@ func mount(m inittype.MountInfo) error {
 			return fmt.Errorf("failed to run command %+v: %w", m.Cmd, err)
 		}
 	}
+	for _, d := range m.PostDir {
+		if err := os.MkdirAll(d.Path, os.FileMode(d.Mode)); err != nil {
+			return fmt.Errorf("failed to create %q: %w", d.Path, err)
+		}
+	}
+	for _, f := range m.PostFile {
+		cf, err := os.Create(f.Path)
+		if err != nil {
+			return fmt.Errorf("failed to create %q: %w", f.Path, err)
+		}
+		if _, err := cf.Write([]byte(f.Contents)); err != nil {
+			return fmt.Errorf("failed to write contents to %q: %w", f.Path, err)
+		}
+		if err := cf.Close(); err != nil {
+			return fmt.Errorf("failed to close %q: %w", f.Path, err)
+		}
+	}
 	return nil
 }
 
@@ -227,7 +271,7 @@ var (
 	delimArgs  = regexp.MustCompile(`[^\\] `)
 )
 
-func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) runtimespec.Spec {
+func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_ runtimespec.Spec, withNet bool, mac string) {
 	var options []string
 	lmchs := delimLines.FindAllIndex(infoD, -1)
 	prev := 0
@@ -275,6 +319,15 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) ru
 			entrypoint = []string{o}
 		case "env":
 			s.Process.Env = append(s.Process.Env, o)
+		case "n":
+			withNet = true // TODO: check mode (e.g. dhcp, ...)
+			mac = o
+		case "t":
+			if o != "" {
+				if err := exec.Command("date", "+%s", "-s", "@"+o).Run(); err != nil {
+					log.Printf("failed setting date: %v", err) // TODO: return error
+				}
+			}
 		default:
 			log.Printf("unsupported prefix: %q", inst)
 		}
@@ -286,5 +339,5 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) ru
 		args = imageConfig.Config.Cmd
 	}
 	s.Process.Args = append(entrypoint, args...)
-	return s
+	return s, withNet, mac
 }

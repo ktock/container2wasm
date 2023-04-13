@@ -53,8 +53,8 @@ COPY --link --from=oci-image-src / /oci
 # <vm-rootfs>/oci/rootfs          : rootfs dir this Dockerfile creates container's rootfs and used by the container.
 # <vm-rootfs>/oci/image.json      : container image config file used by init
 # <vm-rootfs>/oci/spec.json       : container runtime spec file used by init
-# <vm-rootfs>/etc/initconfig.json : configuration file for init
-RUN mkdir -p /out/oci/rootfs /out/oci/bundle /out/etc && \
+# <vm-rootfs>/oci/initconfig.json : configuration file for init
+RUN mkdir -p /out/oci/rootfs /out/oci/bundle && \
     IS_WIZER=false && \
     if test "${OPTIMIZATION_MODE}" = "wizer" ; then IS_WIZER=true ; fi && \
     NO_VMTOUCH_F=false && \
@@ -65,7 +65,7 @@ RUN mkdir -p /out/oci/rootfs /out/oci/bundle /out/etc && \
                 --runtime-config-path=/oci/spec.json \
                 --rootfs-path=/oci/rootfs \
                 /oci "${TARGETPLATFORM}" /out/oci/rootfs && \
-    mv image.json spec.json /out/oci/ && mv initconfig.json /out/etc/
+    mv image.json spec.json /out/oci/ && mv initconfig.json /out/oci/
 
 FROM ubuntu:22.04 AS gcc-riscv64-linux-gnu-base
 RUN apt-get update && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make
@@ -162,10 +162,11 @@ RUN git clone -b $BUSYBOX_VERSION --depth 1 https://git.busybox.net/busybox
 WORKDIR /work/busybox
 RUN make CROSS_COMPILE=riscv64-linux-gnu- LDFLAGS=--static defconfig
 RUN make CROSS_COMPILE=riscv64-linux-gnu- LDFLAGS=--static -j$(nproc)
-RUN mkdir -p /out && mv busybox /out/busybox
+RUN mkdir -p /out/bin && mv busybox /out/bin/busybox
 RUN make LDFLAGS=--static defconfig
 RUN make LDFLAGS=--static -j$(nproc)
-RUN for i in $(./busybox --list) ; do ln -s busybox /out/$i ; done
+RUN for i in $(./busybox --list) ; do ln -s busybox /out/bin/$i ; done
+RUN mkdir -p /out/usr/share/udhcpc/ && cp ./examples/udhcp/simple.script /out/usr/share/udhcpc/default.script
 
 FROM gcc-riscv64-linux-gnu-base AS tini-riscv64-dev
 # https://github.com/krallin/tini#building-tini
@@ -179,15 +180,14 @@ RUN cmake . && make && mkdir /out/ && mv tini /out/
 
 FROM ubuntu:22.04 AS rootfs-riscv64-dev
 RUN apt-get update -y && apt-get install -y mkisofs
-COPY --link --from=busybox-riscv64-dev /out/ /rootfs/bin/
+COPY --link --from=busybox-riscv64-dev /out/ /rootfs/
 COPY --link --from=binfmt-dev / /rootfs/
 COPY --link --from=runc-riscv64-dev /out/runc /rootfs/sbin/runc
 COPY --link --from=bundle-dev /out/ /rootfs/
 COPY --link --from=init-riscv64-dev /out/init /rootfs/sbin/init
 COPY --link --from=vmtouch-riscv64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-riscv64-dev /out/tini /rootfs/sbin/tini
-RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
-RUN touch /rootfs/etc/resolv.conf /rootfs/etc/hosts
+RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
 RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
 # RUN isoinfo -i /out/rootfs.bin -l
 
@@ -320,10 +320,11 @@ RUN git clone -b $BUSYBOX_VERSION --depth 1 https://git.busybox.net/busybox
 WORKDIR /work/busybox
 RUN make CROSS_COMPILE=x86_64-linux-gnu- LDFLAGS=--static defconfig
 RUN make CROSS_COMPILE=x86_64-linux-gnu- LDFLAGS=--static -j$(nproc)
-RUN mkdir -p /out && mv busybox /out/busybox
+RUN mkdir -p /out/bin && mv busybox /out/bin/busybox
 RUN make LDFLAGS=--static defconfig
 RUN make LDFLAGS=--static -j$(nproc)
-RUN for i in $(./busybox --list) ; do ln -s busybox /out/$i ; done
+RUN for i in $(./busybox --list) ; do ln -s busybox /out/bin/$i ; done
+RUN mkdir -p /out/usr/share/udhcpc/ && cp ./examples/udhcp/simple.script /out/usr/share/udhcpc/default.script
 
 FROM golang-base AS runc-amd64-dev
 ARG RUNC_VERSION
@@ -385,14 +386,13 @@ RUN git clone https://github.com/hoytech/vmtouch.git && \
 
 FROM ubuntu:22.04 AS rootfs-amd64-dev
 RUN apt-get update -y && apt-get install -y mkisofs
-COPY --link --from=busybox-amd64-dev /out/ /rootfs/bin/
+COPY --link --from=busybox-amd64-dev /out/ /rootfs/
 COPY --link --from=runc-amd64-dev /out/runc /rootfs/sbin/runc
 COPY --link --from=bundle-dev /out/ /rootfs/
 COPY --link --from=init-amd64-dev /out/init /rootfs/sbin/init
 COPY --link --from=vmtouch-amd64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-amd64-dev /out/tini /rootfs/sbin/tini
 RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
-RUN touch /rootfs/etc/resolv.conf /rootfs/etc/hosts
 RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
 # RUN isoinfo -i /out/rootfs.bin -l
 
@@ -450,6 +450,10 @@ RUN ${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -O2
 RUN ${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -O2 --target=wasm32-unknown-wasi -Wl,--export=wasm_setjmp -c jmp.S -o jmp_wrapper.o
 RUN ${WASI_SDK_PATH}/bin/wasm-ld jmp.o jmp_wrapper.o --export=wasm_setjmp --export=wasm_longjmp --export=handle_jmp --no-entry -r -o jmp
 
+COPY --link --from=assets ./patches/bochs/vfs /vfs
+WORKDIR /vfs
+RUN ${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -O2 --target=wasm32-unknown-wasi -c vfs.c -I . -o vfs.o
+
 COPY --link --from=assets /patches/bochs/Bochs /Bochs
 WORKDIR /Bochs/bochs
 ARG INIT_DEBUG
@@ -461,7 +465,7 @@ RUN LOGGING_FLAG=--disable-logging && \
     ./configure --host wasm32-unknown-wasi --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci \
     --disable-large-ramfile --disable-show-ips --disable-stats ${LOGGING_FLAG} \
     --enable-repeat-speedups --enable-fast-function-calls --disable-trace-linking --enable-handlers-chaining # TODO: --enable-trace-linking causes "out of bounds memory access"
-RUN make -j$(nproc) bochs EMU_DEPS="/tools/wasi-vfs/libwasi_vfs.a /jmp/jmp -lrt"
+RUN make -j$(nproc) bochs EMU_DEPS="/tools/wasi-vfs/libwasi_vfs.a /jmp/jmp /vfs/vfs.o -lrt"
 RUN /binaryen/binaryen-version_${BINARYEN_VERSION}/bin/wasm-opt bochs --asyncify -O2 -o bochs.async --pass-arg=asyncify-ignore-imports
 RUN mv bochs.async bochs
 

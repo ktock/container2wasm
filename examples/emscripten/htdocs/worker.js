@@ -1,6 +1,7 @@
 importScripts("https://cdn.jsdelivr.net/npm/xterm-pty@0.9.4/workerTools.js");
 
 onmessage = (msg) => {
+  importScripts(location.origin + "/module.js"+location.search);
   importScripts(location.origin + "/out.js");
 
   var c = new TtyClient(msg.data);

@@ -48,6 +48,8 @@ $ wasmtime --mapdir /mnt/share::/tmp/share out.wasm cat /mnt/share/from-host
 hi
 ```
 
+> Please refer to [`./examples/networking/wasi/`](./examples/networking/wasi/) for enabling networking
+
 ### Container on Browser
 
 ![Container on browser](./docs/images/ubuntu-wasi-on-browser.png)
@@ -55,7 +57,9 @@ hi
 You can run the container on browser as well.
 There are two methods for running the container on browser.
 
-> NOTE: Please also refer to [`./examples/wasi-browser`](./examples/wasi-browser/) (WASI-on-browser example) and [`./examples/emscripten`](./examples/emscripten/) (emscripten example).
+> Please also refer to [`./examples/wasi-browser`](./examples/wasi-browser/) (WASI-on-browser example) and [`./examples/emscripten`](./examples/emscripten/) (emscripten example).
+
+> Please refer to [`./examples/networking/`](./examples/networking/) for details about enabling networking.
 
 #### WASI on browser
 
@@ -79,6 +83,41 @@ $ docker run --rm -p 8080:80 \
 ```
 
 You can run the container on browser via `localhost:8080`.
+
+##### WASI on browser with networking
+
+![Debian container on browser with browser networking](./docs/images/debian-curl-wasi-on-browser-frontend-networking.png)
+
+Container can also perform networking.
+This section is the demo of using curl command in the container.
+
+> Tested only on Chrome. The example might not work on other browsers.
+
+```
+$ cat <<EOF | docker build -t debian-curl -
+FROM debian:sid-slim
+RUN apt-get update && apt-get install -y curl
+EOF
+$ c2w debian-curl /tmp/out-js2/htdocs/out.wasm
+```
+
+This example serves the image on `localhost:8080` using apache http server.
+The following also builds the [network stack runnable on browser](./extras/c2w-net-proxy/) and puts it to the document root.
+
+```
+$ cp -R ./examples/wasi-browser/* /tmp/out-js2/ && chmod 755 /tmp/out-js2/htdocs
+$ PREFIX=/tmp/out-js2/htdocs/ make c2w-net-proxy.wasm
+$ docker run --rm -p 8080:80 \
+         -v "/tmp/out-js2/htdocs:/usr/local/apache2/htdocs/:ro" \
+         -v "/tmp/out-js2/xterm-pty.conf:/usr/local/apache2/conf/extra/xterm-pty.conf:ro" \
+         --entrypoint=/bin/sh httpd -c 'echo "Include conf/extra/xterm-pty.conf" >> /usr/local/apache2/conf/httpd.conf && httpd-foreground'
+```
+
+You can run the container on browser with several types of configurations:
+
+- `localhost:8080/?net=browser`: Container with networking. [Network stack](./extras/c2w-net-proxy/) based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) runs on browser and forwards HTTP/HTTPS packets using the browser's Fetch API. The set of accesible sites is restricted by the browser configuration (e.g. CORS restriction). See also [`./examples/networking/fetch`](./examples/networking/fetch/) for detalis.
+- `localhost:8080/?net=delegate=ws://localhost:8888`: Container with networking. You need to run [user-space network stack](./cmd/c2w-net/) based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) on the host (outside of browser). It forwards all packets received from the browser over WebSocket. See also [`./examples/networking/websocket`](./examples/networking/websocket/) for detalis and configuration.
+- `localhost:8080`: Container without networking.
 
 #### emscripten on browser
 
@@ -108,20 +147,25 @@ You can run the container on browser via `localhost:8080`.
 
 > NOTE: It can take some time to load and start the container.
 
+Networking can also be enabled using the [user-space network stack](./cmd/c2w-net/) based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) serving over WebSocket on the host (outside of browser).
+See also [`./examples/networking/websocket`](./examples/networking/websocket/) for detalis.
+
 ## Getting Started
 
 - requirements
   - Docker 18.09+ (w/ `DOCKER_BUILDKIT=1`)
   - [Docker Buildx](https://docs.docker.com/build/install-buildx/) v0.8+ (recommended) or `docker build` (w/ `DOCKER_BUILDKIT=1`)
 
-You can install the converter command `c2w` using one of the following methods:
+You can install the converter command `c2w` using one of the following methods.
 
-### Release binary
+> NOTE: The output binary also contains [`c2w-net`](./cmd/c2w-net/) which a command usable for controlling networking feature (please see also [./examples/networking](./examples/networking/) for details).
+
+### Release binaries
 
 Binaries are available from https://github.com/ktock/container2wasm/releases
 Extract the tarball and put the binary somewhere under `$PATH`.
 
-### Building binary using make
+### Building binaries using make
 
 Go 1.19+ is needed.
 
@@ -218,23 +262,23 @@ The following shows the techniqual details:
 
 ### x86_64 containers
 
-|runtime |stdio|mapdir|note|
-|---|---|---|---|
-|wasmtime|:heavy_check_mark:|:heavy_check_mark:||
-|wamr(wasm-micro-runtime)|:heavy_check_mark:|:heavy_check_mark:||
-|wazero|:heavy_check_mark:|:heavy_check_mark:||
-|wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
-|wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
+|runtime|stdio|mapdir|networking|note|
+|---|---|---|---|---|
+|wasmtime|:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark: (w/ [host-side network stack](./examples/networking/wasi/))||
+|wamr(wasm-micro-runtime)|:heavy_check_mark:|:heavy_check_mark:|:construction:||
+|wazero|:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark: (w/ [host-side network stack](./examples/networking/wasi/)||
+|wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|:construction:|non-blocking stdin doesn't seem to work|
+|wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|:construction:|non-blocking stdin doesn't seem to work|
 
 ### risc-v and other architecutre's containers
 
-|runtime |stdio|mapdir|note|
-|---|---|---|---|
-|wasmtime|:heavy_check_mark:|:heavy_check_mark:||
-|wamr(wasm-micro-runtime)|:heavy_check_mark:|:heavy_check_mark:||
-|wazero|:heavy_check_mark:|:heavy_check_mark:||
-|wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
-|wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
+|runtime |stdio|mapdir|networking|note|
+|---|---|---|---|---|
+|wasmtime|:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark: (w/ [host-side network stack](./examples/networking/wasi/))||
+|wamr(wasm-micro-runtime)|:heavy_check_mark:|:heavy_check_mark:|:construction:||
+|wazero|:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark: (w/ [host-side network stack](./examples/networking/wasi/))||
+|wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|:construction:|non-blocking stdin doesn't seem to work|
+|wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|:construction:|non-blocking stdin doesn't seem to work|
 
 ## Similar projects
 
@@ -282,6 +326,7 @@ Re-compilation (and possibe re-implementation) of the application is needed.
   - vmtouch ([license](https://github.com/hoytech/vmtouch/blob/master/LICENSE)): https://github.com/hoytech/vmtouch
   - BusyBox ([GNU General Public License version 2](https://www.busybox.net/license.html)): https://git.busybox.net/busybox
 
-- On-browser example relies on xterm-pty and `browser_wasi_shim`(for WASI-on-browser).
+- On-browser example relies on the following softwares.
   - xterm-pty ([MIT License](https://github.com/mame/xterm-pty/blob/main/LICENSE.txt)): https://github.com/mame/xterm-pty
   - `browser_wasi_shim` (either of [MIT License](https://github.com/bjorn3/browser_wasi_shim/blob/main/LICENSE-MIT) and [Apache License 2.0](https://github.com/bjorn3/browser_wasi_shim/blob/main/LICENSE-APACHE)): https://github.com/bjorn3/browser_wasi_shim
+  - `gvisor-tap-vsock` ([Apache License 2.0](https://github.com/containers/gvisor-tap-vsock/blob/main/LICENSE)): https://github.com/containers/gvisor-tap-vsock
