@@ -1,4 +1,4 @@
-# syntax = docker/dockerfile:1.4
+# syntax = docker/dockerfile:1.5
 
 ARG BINFMT_VERSION=qemu-v6.1.0
 ARG WASI_SDK_VERSION=19

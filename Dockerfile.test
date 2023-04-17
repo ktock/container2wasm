@@ -1,4 +1,4 @@
-# syntax = docker/dockerfile:1.4
+# syntax = docker/dockerfile:1.5
 
 ARG BUILDX_VERSION=0.10.4
 ARG DOCKER_VERSION=23.0.3
