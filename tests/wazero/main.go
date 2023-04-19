@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	crand "crypto/rand"
 	"flag"
-	"io"
 	"os"
 	"strings"
 
@@ -45,48 +43,9 @@ func main() {
 	}
 	// we forcibly enable non-blocking read of stdin.
 	_, err = r.InstantiateModule(ctx, compiled,
-		wazero.NewModuleConfig().WithSysWalltime().WithSysNanotime().WithSysNanosleep().WithRandSource(crand.Reader).WithStdout(os.Stdout).WithStderr(os.Stderr).WithStdin(newNonBlockReader(os.Stdin)).WithFSConfig(fsConfig).WithArgs(append([]string{"arg0"}, args[1:]...)...))
+		wazero.NewModuleConfig().WithSysWalltime().WithSysNanotime().WithSysNanosleep().WithRandSource(crand.Reader).WithStdout(os.Stdout).WithStderr(os.Stderr).WithStdin(os.Stdin).WithFSConfig(fsConfig).WithArgs(append([]string{"arg0"}, args[1:]...)...))
 	if err != nil {
 		panic(err)
 	}
 	return
-}
-
-type nonBlockReader struct {
-	buf    *bytes.Buffer
-	closed bool
-}
-
-func newNonBlockReader(r io.Reader) io.Reader {
-	buf := new(bytes.Buffer) // TODO: FIXME: handle the situation where written bytes exceed the buffer size
-	br := &nonBlockReader{buf: buf}
-	go func() {
-		defer func() {
-			br.closed = true
-		}()
-		var p [1]byte
-		for {
-			n, err := r.Read(p[:])
-			if err != nil {
-				if err == io.EOF {
-					return
-				}
-				return
-			}
-			if n > 0 {
-				buf.Write(p[:])
-			}
-
-		}
-	}()
-	return br
-}
-
-func (r *nonBlockReader) Read(p []byte) (int, error) {
-	n, err := r.buf.Read(p)
-	if err == io.EOF && !r.closed {
-		// TinyEMU requires n < -1 if the reader isn't closed yet
-		n, err = -1, nil
-	}
-	return n, err
 }

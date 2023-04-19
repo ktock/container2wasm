@@ -180,7 +180,7 @@ The following shows the techniqual details:
 |---|---|---|---|
 |wasmtime|:heavy_check_mark:|:heavy_check_mark:||
 |wamr(wasm-micro-runtime)|:heavy_check_mark:|:heavy_check_mark:||
-|wazero|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
+|wazero|:heavy_check_mark:|:heavy_check_mark:||
 |wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
 |wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
 
