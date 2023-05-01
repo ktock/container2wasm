@@ -7,7 +7,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0-rc3
 	github.com/opencontainers/runc v1.1.7
 	github.com/opencontainers/runtime-spec v1.1.0-rc.2
-	github.com/urfave/cli v1.22.12
+	github.com/urfave/cli v1.22.13
 	gotest.tools/v3 v3.4.0
 )
 
