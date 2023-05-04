@@ -203,7 +203,7 @@ func TestRuntimes(t *testing.T) {
 			name:    "wasmer-hello",
 			input:   "riscv64/alpine:20221110",
 			runtime: "wasmer",
-			args:    []string{"--", "echo", "-n", "hello"}, // wasmer requires "--" before flags we pass to the wasm program.
+			args:    []string{"--", "--no-stdin", "echo", "-n", "hello"}, // wasmer requires "--" before flags we pass to the wasm program.
 			want:    wantString("hello"),
 		},
 		// NOTE: stdin unsupported on wasmer
@@ -223,7 +223,7 @@ func TestRuntimes(t *testing.T) {
 			},
 			runtime:     "wasmer",
 			runtimeOpts: []string{"--mapdir=/mapped/dir/test::/tmp/wasmer-mapdirtest/testdir"},
-			args:        []string{"cat", "/mapped/dir/test/hi"},
+			args:        []string{"--", "--no-stdin", "cat", "/mapped/dir/test/hi"},
 			want:        wantString("teststring"),
 		},
 
