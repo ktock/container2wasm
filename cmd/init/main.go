@@ -12,7 +12,9 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/jlaffaye/ftp"
 	inittype "github.com/ktock/container2wasm/cmd/init/types"
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
@@ -38,6 +40,15 @@ func doInit() error {
 	os.Setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin")
 	os.Setenv("HOME", "/root")
 	os.Setenv("TERM", "vt100")
+
+	hostAddr := ""
+	if v := os.Getenv("HOST_ADDR"); v != "" {
+		hostAddr = v
+	}
+	infoSourceRemoteAddr := ""
+	if v := os.Getenv("INIT_INFO_SOURCE_REMOTE"); v != "" {
+		infoSourceRemoteAddr = v
+	}
 
 	cfgD, err := os.ReadFile(initConfigPath)
 	if err != nil {
@@ -93,18 +104,21 @@ func doInit() error {
 	}
 
 	wg.Wait()
+	if infoSourceRemoteAddr == "" {
 
-	// WASI-related filesystems
-	for _, tag := range []string{rootFSTag, packFSTag} {
-		dst := filepath.Join("/mnt", tag)
-		if err := os.Mkdir(dst, 0777); err != nil {
-			return err
+		// WASI-related filesystems
+		for _, tag := range []string{rootFSTag, packFSTag} {
+			dst := filepath.Join("/mnt", tag)
+			if err := os.Mkdir(dst, 0777); err != nil {
+				return err
+			}
+			log.Printf("mounting %q to %q\n", tag, dst)
+			if err := syscall.Mount(tag, dst, "9p", 0, "trans=virtio,version=9p2000.L,msize=8192"); err != nil {
+				log.Printf("failed mounting %q: %v\n", tag, err)
+				break
+			}
 		}
-		log.Printf("mounting %q to %q\n", tag, dst)
-		if err := syscall.Mount(tag, dst, "9p", 0, "trans=virtio,version=9p2000.L,msize=8192"); err != nil {
-			log.Printf("failed mounting %q: %v\n", tag, err)
-			break
-		}
+
 	}
 	specD, err := os.ReadFile(cfg.Container.RuntimeConfigPath)
 	if err != nil {
@@ -130,34 +144,69 @@ func doInit() error {
 		log.SetOutput(io.Discard)
 	}
 
-	// Wizer snapshot can be created by the host here
-	//////////////////////////////////////////////////////////////////////
-	fmt.Printf("==========") // special string not printed
-	var b [2]byte
-	var bPos int
-	bTargetPos := 1
-	for {
-		if _, err := os.Stdin.Read(b[:]); err != nil {
-			return err
+	if infoSourceRemoteAddr != "" {
+		// Wizer snapshot can be created by the host here
+		//////////////////////////////////////////////////////////////////////
+		if hostAddr == "" {
+			return fmt.Errorf("must specify HOST_ADDR for remote info")
 		}
-		log.Printf("HOST: got %q\n", string(b[:]))
-		if b[0] == '=' && b[1] == '\n' {
-			bPos++
-			if bPos == bTargetPos {
+		for _, c := range [][]string{
+			[]string{"ifconfig", "eth0", "up"},
+			[]string{"ip", "addr", "add", hostAddr, "dev", "eth0"},
+		} {
+			wcmd := exec.Command(c[0], c[1:]...)
+			wcmd.Stdout = log.Writer()
+			wcmd.Stderr = log.Writer()
+			if err := wcmd.Run(); err != nil {
+				return fmt.Errorf("failed to get info file from remote(%v): %w", c, err)
+			}
+		}
+		if _, err := ftpFileSize(infoSourceRemoteAddr, "initdone"); err != nil {
+			log.Printf("error from initdone: %v\n", err)
+		}
+		for {
+			if _, err := ftpFileSize(infoSourceRemoteAddr, "resumed"); err == nil {
 				break
 			}
-			continue
 		}
-		bPos = 0
+		//////////////////////////////////////////////////////////////////////
+	} else {
+		// Wizer snapshot can be created by the host here
+		//////////////////////////////////////////////////////////////////////
+		fmt.Printf("==========") // special string not printed
+		var b [2]byte
+		var bPos int
+		bTargetPos := 1
+		for {
+			if _, err := os.Stdin.Read(b[:]); err != nil {
+				return err
+			}
+			log.Printf("HOST: got %q\n", string(b[:]))
+			if b[0] == '=' && b[1] == '\n' {
+				bPos++
+				if bPos == bTargetPos {
+					break
+				}
+				continue
+			}
+			bPos = 0
+		}
+		///////////////////////////////////////////////////////////////////////
 	}
-	///////////////////////////////////////////////////////////////////////
 
-	infoD, err := os.ReadFile(filepath.Join("/mnt", packFSTag, "info"))
+	var infoD []byte
+	if infoSourceRemoteAddr == "" {
+		infoD, err = os.ReadFile(filepath.Join("/mnt", packFSTag, "info"))
+	} else {
+		infoD, err = ftpRead(infoSourceRemoteAddr, "info")
+	}
 	if err != nil {
 		return err
 	}
+
 	log.Printf("INFO:\n%s\n", string(infoD))
 	s = patchSpec(s, infoD, imageConfig)
+
 	log.Printf("Running: %+v\n", s.Process.Args)
 	sd, err := json.Marshal(s)
 	if err != nil {
@@ -285,4 +334,40 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) ru
 	}
 	s.Process.Args = append(entrypoint, args...)
 	return s
+}
+
+func ftpFileSize(addr, p string) (int64, error) {
+	c, err := ftp.Dial(addr, ftp.DialWithTimeout(5*time.Second))
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			log.Printf("ftpFileSize: error from Quit: %v\n", err)
+		}
+	}()
+	if err := c.Login("anonymous", "dummypass"); err != nil {
+		return 0, err
+	}
+	return c.FileSize(p)
+}
+
+func ftpRead(addr, p string) ([]byte, error) {
+	c, err := ftp.Dial(addr, ftp.DialWithTimeout(5*time.Second))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := c.Quit(); err != nil {
+			log.Printf("ftpRead: error from Quit: %v\n", err)
+		}
+	}()
+	if err := c.Login("anonymous", "dummypass"); err != nil {
+		return nil, err
+	}
+	r, err := c.Retr(p)
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(r)
 }

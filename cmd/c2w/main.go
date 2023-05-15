@@ -44,7 +44,7 @@ func main() {
 		cli.StringFlag{
 			Name:  "target-arch",
 			Usage: "target architecture of the source image to use",
-			Value: "riscv64",
+			Value: "amd64",
 		},
 		cli.StringSliceFlag{
 			Name:  "build-arg",
@@ -259,7 +259,7 @@ func prepareSourceImg(builderPath, imgName, tmpdir, targetarch string) error {
 			return err
 		}
 		if a := inspectData[0]["Architecture"]; a != targetarch {
-			log.Printf("unexpected archtecture %v (target: %v)...\n", a, targetarch)
+			log.Printf("unexpected archtecture %v (target: %v). Try \"--target-arch\" when specifying an architecture.\n", a, targetarch)
 			needsPull = true
 		}
 	}
@@ -274,7 +274,7 @@ func prepareSourceImg(builderPath, imgName, tmpdir, targetarch string) error {
 		pullCmd.Stdout = os.Stdout
 		pullCmd.Stderr = os.Stderr
 		if err := pullCmd.Run(); err != nil {
-			return err
+			return fmt.Errorf("failed to pull the image. Try \"--target-arch\" when specifying an architecture: %w", err)
 		}
 	}
 	saveCmd := exec.Command(builderPath, "save", imgName)

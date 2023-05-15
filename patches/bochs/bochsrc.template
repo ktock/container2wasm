@@ -1,0 +1,14 @@
+megs: ${MEMORY_SIZE}
+romimage: file=/pack/BIOS-bochs-latest
+vgaromimage: file=/pack/VGABIOS-lgpl-latest
+ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
+ata0-master: type=cdrom, path="/pack/boot.iso", status=inserted
+usb_ehci: port1=cdrom, options1="path:/pack/rootfs.bin, speed:high"
+boot: cdrom
+mouse: enabled=0
+cpu: ips=40000000
+clock: sync=both, rtc_sync=1, time0=local
+com1: enabled=1, mode=term
+display_library: nogui
+vga: extension=none, realtime=0, update_freq=1, ddc=disabled
+ne2k: card=0, type=pci, mac=b0:c4:20:00:00:01, ethmod=vnet, ethdev="/pack/"
