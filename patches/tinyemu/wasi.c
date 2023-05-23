@@ -167,15 +167,3 @@ int init_wasi()
     }
     return 0;
 }
-
-// TODO: Remove this; This is a hack to passthrough poll_oneoff to wasi without being intercepted by wasi-vfs.
-//       This is because wasi-vfs doesn't implement this but our only use-case of this is for polling stdin as of now
-//       So we do not rely on that library for this feature. Once wasi-vfs supports pool_oneoff, remove this.
-//       Ref: https://github.com/kateinoigakukun/wasi-vfs/blob/v0.2.0/src/wasi_snapshot_preview1.rs#L888-L895
-int32_t poll_oneoff(int32_t arg0, int32_t arg1, int32_t arg2, int32_t arg3) __attribute__((
-    __import_module__("wasi_snapshot_preview1"),
-    __import_name__("poll_oneoff")
-));
-int32_t __imported_wasi_snapshot_preview1_poll_oneoff(int32_t arg0, int32_t arg1, int32_t arg2, int32_t arg3) {
-  return poll_oneoff(arg0, arg1, arg2, arg3);
-}
