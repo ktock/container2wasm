@@ -7,10 +7,10 @@
 
 container2wasm is a container-to-wasm image converter that enables to run the container on WASM.
 
-- Converts a container to WASM with TinyEMU-based emulation
+- Converts a container to WASM with emulation by Bochs (for x86_64 containers) and TinyEMU (for riscv64 containers).
 - Runs on WASI runtimes (e.g. wasmtime, wamr, wasmer, wasmedge, wazero)
 - Runs on browser
-- riscv64 containers are recommended. Other platforms (e.g. amd64 and arm64) also work (but slow).
+- x86_64 or riscv64 containers are recommended. Other platforms (e.g. arm64) also work (but slow).
 
 This is an experimental software.
 
@@ -21,39 +21,70 @@ Demo page of containers on browser (debian,python,node,vim): https://ktock.githu
 ### Container Image to WASM (WASI)
 
 ```console
-$ c2w riscv64/ubuntu:22.04 out.wasm
+$ c2w ubuntu:22.04 out.wasm
 ```
 
-The above command converts `riscv64/ubuntu:22.04` container image to WASI image (`out.wasm`).
+The above command converts `ubuntu:22.04` container image to WASI image (`out.wasm`).
 
-> NOTE: riscv64 container is recommended. Other platform's containers should work but slow because of additional emulation.
+> NOTE1: For selecting the container image's architecture other than `amd64`, use `--target-arch` flag of c2w (e.g. `c2w --target-arch=riscv64 riscv64/ubuntu:22.04 out.wasm`).
+
+> NOTE2: x86_64 or riscv64 container is recommended. Other platform's containers should work but slow because of additional emulation.
 
 The generated image runs on WASI runtimes:
 
 ```console
 $ wasmtime out.wasm uname -a
-Linux localhost 6.1.0 #1 Wed Feb 15 04:09:09 UTC 2023 riscv64 riscv64 riscv64 GNU/Linux
+Linux localhost 6.1.0 #1 PREEMPT_DYNAMIC Mon Jun  5 11:57:09 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux
 $ wasmtime out.wasm ls /
-bin   dev  home  media	opt   root  sbin  sys  usr
-boot  etc  lib	 mnt	proc  run   srv   tmp  var
+bin   dev  home  lib32	libx32	mnt  proc  run	 srv  tmp  var
+boot  etc  lib	 lib64	media	opt  root  sbin  sys  usr
 ```
 
-Directories on the host can be available on the container using `--mapdir`:
-
-```console
-$ mkdir -p /tmp/share/ && echo hi > /tmp/share/hi
-$ wasmtime --mapdir /test/dir/share::/tmp/share -- out.wasm --entrypoint=cat -- /test/dir/share/hi
-hi
-```
-
-> NOTE: Other WASI features untested. Future version will support more WASI features.
+> NOTE: Directory mapping is available on non-x86_64 containers (TinyEMU-emulated ones) as of now. Other WASI features untested. Future version will support more WASI features.
 
 ### Container on Browser
+
+![Container on browser](./docs/images/ubuntu-wasi-on-browser.png)
+
+You can run the container on browser as well.
+There are two methods for running the container on browser.
+
+> NOTE: Please also refer to [`./examples/wasi-browser`](./examples/wasi-browser/) (WASI-on-browser example) and [`./examples/emscripten`](./examples/emscripten/) (emscripten example).
+
+#### WASI on browser
+
+This example converts the container to WASI and runs it on browser.
+
+The following command generates a WASI image.
+
+```
+$ c2w ubuntu:22.04 /tmp/out-js2/htdocs/out.wasm
+```
+
+The following is an example of running the image on browser relying on [xterm-pty](https://github.com/mame/xterm-pty) and [browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim).
+This example serves the image on `localhost:8080` using apache http server.
+
+```
+$ cp -R ./examples/wasi-browser/* /tmp/out-js2/ && chmod 755 /tmp/out-js2/htdocs
+$ docker run --rm -p 8080:80 \
+         -v "/tmp/out-js2/htdocs:/usr/local/apache2/htdocs/:ro" \
+         -v "/tmp/out-js2/xterm-pty.conf:/usr/local/apache2/conf/extra/xterm-pty.conf:ro" \
+         --entrypoint=/bin/sh httpd -c 'echo "Include conf/extra/xterm-pty.conf" >> /usr/local/apache2/conf/httpd.conf && httpd-foreground'
+```
+
+You can run the container on browser via `localhost:8080`.
+
+#### emscripten on browser
+
+This example uses emscripten for converting the container to WASM.
+
+- pros: WASM image size can be smaller than WASI.
+- cons: WASI-specific optimization like [Wizer](https://github.com/bytecodealliance/wizer/) pre-initialization isn't available for this mode. So the startup of the container can be slow (For x86_64 containers it might take >= 30s. For riscv64 containers it might take >= 10s).
 
 The following command generates a WASM image and a JS file runnable on browser.
 
 ```console
-$ c2w --to-js riscv64/ubuntu:22.04 /tmp/out-js/htdocs/
+$ c2w --to-js ubuntu:22.04 /tmp/out-js/htdocs/
 ```
 
 The following is an example of running the image on browser relying on [xterm-pty](https://github.com/mame/xterm-pty).
@@ -69,9 +100,7 @@ $ docker run --rm -p 8080:80 \
 
 You can run the container on browser via `localhost:8080`.
 
-![Cotainer with emscripten](./docs/images/container-emscripten.png)
-
-> This feature is currently for demo only.
+> NOTE: It can take some time to load and start the container.
 
 ## Getting Started
 
@@ -115,9 +144,9 @@ Options
 - `--assets value`: Custom location of build assets.
 - `--dockerfile value`: Custom location of Dockerfile (default: embedded to this command)
 - `--builder value`: Bulider command to use (default: "docker")
-- `--target-arch value`: target architecture of the source image to use (default: "riscv64")
+- `--target-arch value`: target architecture of the source image to use (default: "amd64")
 - `--build-arg value`: Additional build arguments (please see Dockerfile for available build args)
-- `--to-js`: output JS files runnable on the browsers using emscripten
+- `--to-js`: convert the container to WASM using emscripten
 - `--debug-image`: Enable debug print in the output image
 - `--show-dockerfile`: Show default Dockerfile
 - `--legacy`: Use "docker build" instead of buildx (no support for assets flag) (default:false)
@@ -155,6 +184,8 @@ $ wasmtime --mapdir /test/dir/share::/tmp/share /app/out.wasm ls /test/dir/share
 hi
 ```
 
+> NOTE: Directory mapping is available on non-x86_64 containers (TinyEMU-emulated) as of now. This should be available on all containers in the future.
+
 ## Motivation
 
 Though more and more programming languages start to support WASM, it's not easy to run the existing programs on WASM.
@@ -168,13 +199,30 @@ contaienr2wasm creates a WASM image that runs the container and the Linux kernel
 The following shows the techniqual details:
 
 - Builder: [BuildKit](https://github.com/moby/buildkit) runs the conversion steps written in Dockerfile.
-- Emulator: [TinyEMU](https://bellard.org/tinyemu/) emulates RISC-V CPU on WASM. It's compiled to WASM using [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) (for WASI) and [emscripten](https://github.com/emscripten-core/emscripten) (for on-browser).
-- Guest OS: Linux runs on the emulated RISC-V CPU. [runc](https://github.com/opencontainers/runc) starts the container. Non-RISC-V containers runs with additional emulation by QEMU installed via [`tonistiigi/binfmt`](https://github.com/tonistiigi/binfmt).
-- Directory Mapping: WASI filesystem API makes host directories visible to TinyEMU. TinyEMU mounts them to the guest linux via virtio-9p.
-- Packaging: [wasi-vfs](https://github.com/kateinoigakukun/wasi-vfs) (for WASI) and emscripten (for on-browser) are used for packaging the dependencies. The kernel is pre-booted during the build using [wizer](https://github.com/bytecodealliance/wizer/) to minimize the startup latency (for WASI only as of now).
+- Emulator: [Bochs](https://bochs.sourceforge.io/) emulates x86_64 CPU on WASM. [TinyEMU](https://bellard.org/tinyemu/) emulates RISC-V CPU on WASM. They're compiled to WASM using [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) (for WASI and on-browser) and [emscripten](https://github.com/emscripten-core/emscripten) (for on-browser).
+- Guest OS: Linux runs on the emulated CPU. [runc](https://github.com/opencontainers/runc) starts the container. Non-x86 and non-RISC-V containers runs with additional emulation by QEMU installed via [`tonistiigi/binfmt`](https://github.com/tonistiigi/binfmt).
+- Directory Mapping: WASI filesystem API makes host directories visible to the emulator. TinyEMU mounts them to the guest linux via virtio-9p. Unsupported on Bochs (for x86_64 emulation) as of now.
+- Packaging: [wasi-vfs](https://github.com/kateinoigakukun/wasi-vfs) (for WASI and on-browser) and emscripten (for on-browser) are used for packaging the dependencies. The kernel is pre-booted during the build using [wizer](https://github.com/bytecodealliance/wizer/) to minimize the startup latency (for WASI only as of now).
 - Security: The converted container runs in the sandboxed WASM (WASI) VM with the limited access to the host system.
 
-## WASM Runtimes Integration Status
+## WASI Runtimes Integration Status
+
+- :heavy_check_mark: : supported
+- :construction: : WIP
+
+- **NOTE**: WASI features not listed here are untested (future version will support more features)
+
+### x86_64 containers
+
+|runtime |stdio|mapdir|note|
+|---|---|---|---|
+|wasmtime|:heavy_check_mark:|:construction:||
+|wamr(wasm-micro-runtime)|:heavy_check_mark:|:construction:||
+|wazero|:heavy_check_mark:|:construction:||
+|wasmer|:construction: (stdin unsupported)|:construction:|non-blocking stdin doesn't seem to work|
+|wasmedge|:construction: (stdin unsupported)|:construction:|non-blocking stdin doesn't seem to work|
+
+### risc-v and other architecutre's containers
 
 |runtime |stdio|mapdir|note|
 |---|---|---|---|
@@ -184,10 +232,13 @@ The following shows the techniqual details:
 |wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
 |wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
 
-- :heavy_check_mark: : supported
-- :construction: : WIP
+Example of mapdir with wasmtime:
 
-- **NOTE**: WASI features other than above is untested (future version will support more features)
+```console
+$ mkdir -p /tmp/share/ && echo hi > /tmp/share/hi
+$ wasmtime --mapdir /test/dir/share::/tmp/share -- out.wasm --entrypoint=cat -- /test/dir/share/hi
+hi
+```
 
 ## Similar projects
 
@@ -208,15 +259,24 @@ There are emulators that support running linux on WASM, but they don't support W
 - RISCV on WASM
   - TinyEMU: https://bellard.org/tinyemu/
 
+Some WASM API specs provides applications access to the host system.
+Re-compilation (and possibe re-implementation) of the application is needed.
+
+- WASI: https://github.com/WebAssembly/WASI
+- WASIX(WASI + additional syscall extensions): https://github.com/wasix-org
+
 ## Additional Documents
 
-- [`./examples/`](./examples): Examples (python, php, non-riscv64 image, etc.)
+- [`./examples/`](./examples): Examples (python, php, on-browser, etc.)
 
 ## Acknowledgement
 
 - container2wasi itself is licensed under Apache 2.0 but the generated WASM image will include third-pirty softwares:
+  - Bochs ([GNU Lesser General Public License v2.1](https://github.com/bochs-emu/Bochs/blob/master/LICENSE)) https://bochs.sourceforge.io/
+    - Source code is contained in ([`./patches/bochs`](./patches/bochs)). Bochs is modified by our project for making it work with containers
   - TinyEMU ([MIT License](https://opensource.org/license/mit/)) https://bellard.org/tinyemu/
-    - Source code is contained in ([`./patches`](./patches)). TinyEMU is modified by our project for making it work with containers
+    - Source code is contained in ([`./patches/tinyemu`](./patches/tinyemu)). TinyEMU is modified by our project for making it work with containers
+  - GRUB ([GNU General Public License Version 3](https://www.gnu.org/licenses/gpl.html)): https://www.gnu.org/software/grub/
   - BBL(riscv-pk) ([license](https://github.com/riscv-software-src/riscv-pk/blob/master/LICENSE)): https://github.com/riscv-software-src/riscv-pk
   - Linux ([GNU General Public License version 2](https://github.com/torvalds/linux/blob/master/COPYING)): https://github.com/torvalds/linux/
   - tini ([MIT License](https://github.com/krallin/tini/blob/master/LICENSE)): https://github.com/krallin/tini
@@ -226,5 +286,6 @@ There are emulators that support running linux on WASM, but they don't support W
   - vmtouch ([license](https://github.com/hoytech/vmtouch/blob/master/LICENSE)): https://github.com/hoytech/vmtouch
   - BusyBox ([GNU General Public License version 2](https://www.busybox.net/license.html)): https://git.busybox.net/busybox
 
-- Emscripten integration example relies on xterm-pty for IO management
+- On-browser example relies on xterm-pty and `browser_wasi_shim`(for WASI-on-browser).
   - xterm-pty ([MIT License](https://github.com/mame/xterm-pty/blob/main/LICENSE.txt)): https://github.com/mame/xterm-pty
+  - `browser_wasi_shim` (either of [MIT License](https://github.com/bjorn3/browser_wasi_shim/blob/main/LICENSE-MIT) and [Apache License 2.0](https://github.com/bjorn3/browser_wasi_shim/blob/main/LICENSE-APACHE)): https://github.com/bjorn3/browser_wasi_shim

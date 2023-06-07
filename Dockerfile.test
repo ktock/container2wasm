@@ -42,6 +42,8 @@ RUN wget https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMT
 # install wamr
 RUN wget https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-${WAMR_VERSION}/iwasm-${WAMR_VERSION}-x86_64-ubuntu-20.04.tar.gz && \
     tar -C /usr/local/bin/ -zxvf iwasm-${WAMR_VERSION}-x86_64-ubuntu-20.04.tar.gz
+RUN wget https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-${WAMR_VERSION}/wamrc-${WAMR_VERSION}-x86_64-ubuntu-20.04.tar.gz && \
+    tar -C /usr/local/bin/ -zxvf wamrc-${WAMR_VERSION}-x86_64-ubuntu-20.04.tar.gz
 
 # install wasmer
 RUN curl https://get.wasmer.io -sSfL | sh -s ${WASMER_VERSION}

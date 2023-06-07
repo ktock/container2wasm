@@ -15,12 +15,16 @@ import (
 // TODO Make it a flag
 const assetPath = "/test/"
 
+type input struct {
+	image       string
+	convertOpts []string
+}
+
 func TestRuntimes(t *testing.T) {
 	c2wBin := "c2w"
 	tests := []struct {
 		name        string
-		input       string
-		convertOpts []string
+		inputs      []input
 		prepare     func(t *testing.T, workdir string)
 		finalize    func(t *testing.T, workdir string)
 		imageName   string // default: test.wasm
@@ -33,21 +37,31 @@ func TestRuntimes(t *testing.T) {
 		// wasmtime tests
 		{
 			name:    "wasmtime-hello",
-			input:   "riscv64/alpine:20221110",
 			runtime: "wasmtime",
-			args:    []string{"echo", "-n", "hello"},
-			want:    wantString("hello"),
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args: []string{"echo", "-n", "hello"},
+			want: wantString("hello"),
 		},
 		{
 			name:    "wasmtime-sh",
-			input:   "riscv64/alpine:20221110",
 			runtime: "wasmtime",
-			args:    []string{"sh"},
-			want:    wantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args: []string{"sh"},
+			want: wantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
 		},
 		{
-			name:  "wasmtime-mapdir",
-			input: "riscv64/alpine:20221110",
+			name:    "wasmtime-mapdir",
+			runtime: "wasmtime",
+			inputs: []input{
+				// TODO: add x86_64 test
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			prepare: func(t *testing.T, _ string) {
 				mapdirTestDir := "/tmp/wasmtime-mapdirtest/"
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
@@ -58,24 +72,29 @@ func TestRuntimes(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			runtime:     "wasmtime",
 			runtimeOpts: []string{"--mapdir=/mapped/dir/test::/tmp/wasmtime-mapdirtest"},
 			args:        []string{"cat", "/mapped/dir/test/hi"},
 			want:        wantString("teststring"),
 		},
 		{
 			name:    "wasmtime-files",
-			input:   "riscv64/alpine:20221110",
 			runtime: "wasmtime",
-			args:    []string{"sh"},
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args: []string{"sh"},
 			want: wantPrompt("/ # ",
 				[2]string{"echo -n hello > /testhello\n", ""},
 				[2]string{"cat /testhello\n", "hello"},
 			),
 		},
 		{
-			name:  "wasmtime-mapdir-io",
-			input: "riscv64/alpine:20221110",
+			name: "wasmtime-mapdir-io",
+			inputs: []input{
+				// TODO: add x86_64 test
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			prepare: func(t *testing.T, _ string) {
 				mapdirTestDir := "/tmp/wasmtime-mapdirtest-io/"
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
@@ -104,43 +123,43 @@ func TestRuntimes(t *testing.T) {
 				[2]string{"echo -n hello > /mapped/dir/test/from-guest/testhello\n", ""},
 			),
 		},
-		{
-			name:        "wasmtime-hello-arch-amd64",
-			input:       "alpine:3.17",
-			runtime:     "wasmtime",
-			convertOpts: []string{"--target-arch=amd64"},
-			args:        []string{"echo", "-n", "hello"},
-			want:        wantString("hello"),
-			noParallel:  true, // avoid conflicting image name
-		},
-		{
-			name:        "wasmtime-hello-arch-aarch64",
-			input:       "alpine:3.17",
-			runtime:     "wasmtime",
-			convertOpts: []string{"--target-arch=aarch64"},
-			args:        []string{"echo", "-n", "hello"},
-			want:        wantString("hello"),
-			noParallel:  true, // avoid conflicting image name
-		},
 
 		// wamr tests
 		{
 			name:    "wamr-hello",
-			input:   "riscv64/alpine:20221110",
 			runtime: "iwasm",
-			args:    []string{"echo", "-n", "hello"},
-			want:    wantString("hello"),
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			imageName: "test2.wasm",
+			prepare: func(t *testing.T, workdir string) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+			},
+			args: []string{"echo", "-n", "hello"},
+			want: wantString("hello"),
 		},
 		{
 			name:    "wamr-sh",
-			input:   "riscv64/alpine:20221110",
 			runtime: "iwasm",
-			args:    []string{"sh"},
-			want:    wantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			imageName: "test2.wasm",
+			prepare: func(t *testing.T, workdir string) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+			},
+			args: []string{"sh"},
+			want: wantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
 		},
 		{
-			name:  "wamr-mapdir",
-			input: "riscv64/alpine:20221110",
+			name:    "wamr-mapdir",
+			runtime: "iwasm",
+			inputs: []input{
+				// TODO: add x86_64 test (with aot by wamrc)
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			prepare: func(t *testing.T, _ string) {
 				mapdirTestDir := "/tmp/wamr-mapdirtest/testdir"
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
@@ -151,24 +170,34 @@ func TestRuntimes(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			runtime:     "iwasm",
 			runtimeOpts: []string{"--dir=/tmp/wamr-mapdirtest/testdir"},
 			args:        []string{"cat", "/tmp/wamr-mapdirtest/testdir/hi"},
 			want:        wantString("teststring"),
 		},
 		{
 			name:    "wamr-files",
-			input:   "riscv64/alpine:20221110",
 			runtime: "iwasm",
-			args:    []string{"sh"},
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			imageName: "test2.wasm",
+			prepare: func(t *testing.T, workdir string) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+			},
+			args: []string{"sh"},
 			want: wantPrompt("/ # ",
 				[2]string{"echo -n hello > /testhello\n", ""},
 				[2]string{"cat /testhello\n", "hello"},
 			),
 		},
 		{
-			name:  "wamr-mapdir-io",
-			input: "riscv64/alpine:20221110",
+			name:    "wamr-mapdir-io",
+			runtime: "iwasm",
+			inputs: []input{
+				// TODO: add x86_64 test (with aot by wamrc)
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			prepare: func(t *testing.T, _ string) {
 				mapdirTestDir := "/tmp/wamr-mapdirtest-io/"
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
@@ -188,7 +217,6 @@ func TestRuntimes(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			runtime:     "iwasm",
 			runtimeOpts: []string{"--dir=/tmp/wamr-mapdirtest-io"},
 			args:        []string{"sh"},
 			want: wantPrompt("/ # ",
@@ -201,16 +229,23 @@ func TestRuntimes(t *testing.T) {
 		// wasmer tests
 		{
 			name:    "wasmer-hello",
-			input:   "riscv64/alpine:20221110",
 			runtime: "wasmer",
-			args:    []string{"--", "--no-stdin", "echo", "-n", "hello"}, // wasmer requires "--" before flags we pass to the wasm program.
-			want:    wantString("hello"),
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args: []string{"--", "--no-stdin", "echo", "-n", "hello"}, // wasmer requires "--" before flags we pass to the wasm program.
+			want: wantString("hello"),
 		},
 		// NOTE: stdin unsupported on wasmer
 		// TODO: support it
 		{
-			name:  "wasmer-mapdir",
-			input: "riscv64/alpine:20221110",
+			name:    "wasmer-mapdir",
+			runtime: "wasmer",
+			inputs: []input{
+				// TODO: add x86_64 test
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			prepare: func(t *testing.T, _ string) {
 				mapdirTestDir := "/tmp/wasmer-mapdirtest/testdir"
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
@@ -221,7 +256,6 @@ func TestRuntimes(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			runtime:     "wasmer",
 			runtimeOpts: []string{"--mapdir=/mapped/dir/test::/tmp/wasmer-mapdirtest/testdir"},
 			args:        []string{"--", "--no-stdin", "cat", "/mapped/dir/test/hi"},
 			want:        wantString("teststring"),
@@ -230,21 +264,31 @@ func TestRuntimes(t *testing.T) {
 		// wazero tests
 		{
 			name:    "wazero-hello",
-			input:   "riscv64/alpine:20221110",
 			runtime: "wazero-test",
-			args:    []string{"echo", "-n", "hello"},
-			want:    wantString("hello"),
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args: []string{"echo", "-n", "hello"},
+			want: wantString("hello"),
 		},
 		{
 			name:    "wazero-sh",
-			input:   "riscv64/alpine:20221110",
 			runtime: "wazero-test",
-			args:    []string{"sh"},
-			want:    wantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args: []string{"sh"},
+			want: wantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
 		},
 		{
-			name:  "wazero-mapdir",
-			input: "riscv64/alpine:20221110",
+			name:    "wazero-mapdir",
+			runtime: "wazero-test",
+			inputs: []input{
+				// TODO: add x86_64 test
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			prepare: func(t *testing.T, _ string) {
 				mapdirTestDir := "/tmp/wazero-mapdirtest/testdir"
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
@@ -255,24 +299,30 @@ func TestRuntimes(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			runtime:     "wazero-test",
 			runtimeOpts: []string{"--mapdir=/mapdir::/tmp/wazero-mapdirtest/testdir"}, // NOTE: wazero supports single-level mapped directory
 			args:        []string{"cat", "/mapdir/hi"},
 			want:        wantString("teststring"),
 		},
 		{
 			name:    "wazero-files",
-			input:   "riscv64/alpine:20221110",
 			runtime: "wazero-test",
-			args:    []string{"sh"},
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args: []string{"sh"},
 			want: wantPrompt("/ # ",
 				[2]string{"echo -n hello > /testhello\n", ""},
 				[2]string{"cat /testhello\n", "hello"},
 			),
 		},
 		{
-			name:  "wazero-mapdir-io",
-			input: "riscv64/alpine:20221110",
+			name:    "wazero-mapdir-io",
+			runtime: "wazero-test",
+			inputs: []input{
+				// TODO: add x86_64 test
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			prepare: func(t *testing.T, _ string) {
 				mapdirTestDir := "/tmp/wazero-mapdirtest-io/"
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
@@ -292,7 +342,6 @@ func TestRuntimes(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			runtime:     "wazero-test",
 			runtimeOpts: []string{"--mapdir=/mapdir::/tmp/wazero-mapdirtest-io"}, // NOTE: wazero supports single-level mapped directory
 			args:        []string{"sh"},
 			want: wantPrompt("/ # ",
@@ -304,21 +353,28 @@ func TestRuntimes(t *testing.T) {
 
 		// wasmedge tests
 		{
-			name:      "wasmedge-hello",
-			input:     "riscv64/alpine:20221110",
+			name:    "wasmedge-hello",
+			runtime: "wasmedge",
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			imageName: "test2.wasm",
 			prepare: func(t *testing.T, workdir string) {
 				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
 			},
-			runtime: "wasmedge",
-			args:    []string{"--no-stdin", "echo", "-n", "hello"}, // NOTE: stdin unsupported on wasmedge as of now
-			want:    wantString("hello"),
+			args: []string{"--no-stdin", "echo", "-n", "hello"}, // NOTE: stdin unsupported on wasmedge as of now
+			want: wantString("hello"),
 		},
 		// NOTE: stdin unsupported on wasmedge
 		// TODO: support it
 		{
-			name:      "wasmedge-mapdir",
-			input:     "riscv64/alpine:20221110",
+			name:    "wasmedge-mapdir",
+			runtime: "wasmedge",
+			inputs: []input{
+				// TODO: add x86_64 test
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
 			imageName: "test2.wasm",
 			prepare: func(t *testing.T, workdir string) {
 				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
@@ -332,58 +388,70 @@ func TestRuntimes(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			runtime:     "wasmedge",
 			runtimeOpts: []string{"--dir=/map/dir:/tmp/wasmedge-mapdirtest/testdir"},
 			args:        []string{"--no-stdin", "cat", "/map/dir/hi"},
 			want:        wantString("teststring"),
 		},
+
+		// Other architectures
+		{
+			name:       "wasmtime-hello-arch-aarch64",
+			runtime:    "wasmtime",
+			inputs:     []input{{image: "alpine:3.17", convertOpts: []string{"--target-arch=aarch64"}}},
+			args:       []string{"echo", "-n", "hello"},
+			want:       wantString("hello"),
+			noParallel: true, // avoid conflicting image name
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			if !tt.noParallel {
-				t.Parallel()
-			}
+		for _, in := range tt.inputs {
+			in := in
+			t.Run(strings.Join(append([]string{tt.name, in.image}, in.convertOpts...), ","), func(t *testing.T) {
+				if !tt.noParallel {
+					t.Parallel()
+				}
 
-			tmpdir, err := os.MkdirTemp("", "testc2w")
-			assert.NilError(t, err)
-			t.Logf("test root: %v", tmpdir)
+				tmpdir, err := os.MkdirTemp("", "testc2w")
+				assert.NilError(t, err)
+				t.Logf("test root: %v", tmpdir)
 
-			testWasm := filepath.Join(tmpdir, "test.wasm")
-			c2wCmd := exec.Command(c2wBin, append(tt.convertOpts, "--assets="+assetPath, tt.input, testWasm)...)
-			c2wCmd.Stdout = os.Stdout
-			c2wCmd.Stderr = os.Stderr
-			assert.NilError(t, c2wCmd.Run())
+				testWasm := filepath.Join(tmpdir, "test.wasm")
+				c2wCmd := exec.Command(c2wBin, append(in.convertOpts, "--assets="+assetPath, in.image, testWasm)...)
+				c2wCmd.Stdout = os.Stdout
+				c2wCmd.Stderr = os.Stderr
+				assert.NilError(t, c2wCmd.Run())
 
-			if tt.prepare != nil {
-				tt.prepare(t, tmpdir)
-			}
-			if tt.finalize != nil {
-				defer tt.finalize(t, tmpdir)
-			}
+				if tt.prepare != nil {
+					tt.prepare(t, tmpdir)
+				}
+				if tt.finalize != nil {
+					defer tt.finalize(t, tmpdir)
+				}
 
-			targetWasm := testWasm
-			if tt.imageName != "" {
-				targetWasm = filepath.Join(tmpdir, tt.imageName)
-			}
-			testCmd := exec.Command(tt.runtime, append(append(tt.runtimeOpts, targetWasm), tt.args...)...)
-			outR, err := testCmd.StdoutPipe()
-			assert.NilError(t, err)
-			defer outR.Close()
-			inW, err := testCmd.StdinPipe()
-			assert.NilError(t, err)
-			defer inW.Close()
+				targetWasm := testWasm
+				if tt.imageName != "" {
+					targetWasm = filepath.Join(tmpdir, tt.imageName)
+				}
+				testCmd := exec.Command(tt.runtime, append(append(tt.runtimeOpts, targetWasm), tt.args...)...)
+				outR, err := testCmd.StdoutPipe()
+				assert.NilError(t, err)
+				defer outR.Close()
+				inW, err := testCmd.StdinPipe()
+				assert.NilError(t, err)
+				defer inW.Close()
 
-			assert.NilError(t, testCmd.Start())
+				assert.NilError(t, testCmd.Start())
 
-			tt.want(t, inW, io.TeeReader(outR, os.Stdout))
-			inW.Close()
+				tt.want(t, inW, io.TeeReader(outR, os.Stdout))
+				inW.Close()
 
-			assert.NilError(t, testCmd.Wait())
+				assert.NilError(t, testCmd.Wait())
 
-			// cleanup cache
-			assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f", "--keep-storage=11GB").Run())
-		})
+				// cleanup cache
+				assert.NilError(t, exec.Command("docker", "buildx", "prune", "-f", "--keep-storage=11GB").Run())
+			})
+		}
 	}
 }
 

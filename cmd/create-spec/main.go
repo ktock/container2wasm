@@ -240,7 +240,11 @@ func createSpec(r io.Reader, rootfs string, debug bool, debugInit bool, imageCon
 func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	ic := config.Config
 	ctdCtx := ctdnamespaces.WithNamespace(context.TODO(), "default")
-	s, err := ctdoci.GenerateSpecWithPlatform(ctdCtx, nil, "linux/riscv64", &ctdcontainers.Container{})
+	p := "linux/riscv64"
+	if config.Architecture == "amd64" {
+		p = "linux/amd64"
+	}
+	s, err := ctdoci.GenerateSpecWithPlatform(ctdCtx, nil, p, &ctdcontainers.Container{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate spec: %w", err)
 	}
@@ -296,21 +300,21 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 }
 
 func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPath, runtimeConfigPath, imageRootfsPath string, noVmtouch bool) (*inittype.BootConfig, error) {
-	runcArgs := []string{"run", "-b", runtimeBundlePath, "foo"}
+	runcArgs := []string{"-b", runtimeBundlePath, "foo"}
 	if debug {
 		runcArgs = append([]string{"--debug"}, runcArgs...)
 	}
 	var cmdPreRun [][]string
 	if !noVmtouch {
 		cmdPreRun = [][]string{
-			[]string{"vmtouch", "-tv", "/sbin/runc", "/sbin/init"},
+			[]string{"vmtouch", "-tv", "/sbin/runc", "/sbin/init", "/sbin/start-runc"},
 		}
 	}
 	bootConfig := &inittype.BootConfig{
 		Debug:     debug,
 		DebugInit: debugInit,
 		Cmd: [][]string{
-			append([]string{"/sbin/runc"}, runcArgs...),
+			append([]string{"/sbin/start-runc"}, runcArgs...),
 		},
 		CmdPreRun: cmdPreRun,
 		Container: inittype.ContainerInfo{
@@ -427,7 +431,7 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 			},
 		},
 	}
-	if arch := config.Architecture; arch != "riscv64" {
+	if arch := config.Architecture; arch != "riscv64" && arch != "amd64" {
 		procfsPos, found := 0, false
 		for i, m := range bootConfig.Mounts {
 			if m.FSType == "proc" {
