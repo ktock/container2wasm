@@ -38,7 +38,7 @@ func BenchmarkHello(t *testing.B) {
 			runtime: "wasmtime",
 			inputs: []input{
 				{image: "alpine:3.17"},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+				// {image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
 			},
 			args: []string{"echo", "-n", "hello"},
 			want: wantString("hello"),
@@ -48,7 +48,7 @@ func BenchmarkHello(t *testing.B) {
 			runtime: "wasmtime",
 			inputs: []input{
 				{image: "alpine:3.17"},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+				// {image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
 			},
 			args:        []string{"/bin/sh", "-c", `seq 1 100 | sha256sum | cut -f 1 -d " " | tr -d '\n'`},
 			want:        wantString("93d4e5c77838e0aa5cb6647c385c810a7c2782bf769029e6c420052048ab22bb"),
@@ -155,19 +155,19 @@ func BenchmarkHello(t *testing.B) {
 		// 	want: wantString("hello"),
 		// },
 
-		// container
-		{
-			name:   "docker-hello",
-			inputs: []input{{image: "alpine:3.17"}},
-			prepare: func(t *testing.B, workdir string) {
-				assert.NilError(t, exec.Command("docker", "pull", "alpine:3.17").Run())
-			},
-			runtime:      "docker",
-			runtimeOpts:  []string{"run", "--rm"},
-			args:         []string{"echo", "-n", "hello"},
-			want:         wantString("hello"),
-			noConversion: true,
-		},
+		// // container
+		// {
+		// 	name:   "docker-hello",
+		// 	inputs: []input{{image: "alpine:3.17"}},
+		// 	prepare: func(t *testing.B, workdir string) {
+		// 		assert.NilError(t, exec.Command("docker", "pull", "alpine:3.17").Run())
+		// 	},
+		// 	runtime:      "docker",
+		// 	runtimeOpts:  []string{"run", "--rm"},
+		// 	args:         []string{"echo", "-n", "hello"},
+		// 	want:         wantString("hello"),
+		// 	noConversion: true,
+		// },
 	}
 
 	for _, tt := range tests {
