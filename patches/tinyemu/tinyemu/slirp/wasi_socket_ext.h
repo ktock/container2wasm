@@ -111,6 +111,7 @@ typedef struct __wasi_addr_info_hints_t {
 #define SO_SNDBUF 7
 #define SO_RCVBUF 8
 #define SO_KEEPALIVE 9
+#define SO_OOBINLINE 10
 #define SO_LINGER 13
 #define SO_REUSEPORT 15
 #define SO_RCVTIMEO 20
@@ -132,6 +133,8 @@ typedef struct __wasi_addr_info_hints_t {
 #define IPV6_JOIN_GROUP 20
 #define IPV6_LEAVE_GROUP 21
 #define IPV6_V6ONLY 26
+
+#define MSG_OOB	1
 
 struct addrinfo {
     int ai_flags;             /* Input flags.  */

@@ -10,7 +10,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <wasi/api.h>
-#include <wasi_socket_ext.h>
+#include "wasi_socket_ext.h"
 
 #define HANDLE_ERROR(error)              \
     if (error != __WASI_ERRNO_SUCCESS) { \
