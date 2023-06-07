@@ -42,6 +42,16 @@ func BenchmarkHello(t *testing.B) {
 			args: []string{"echo", "-n", "hello"},
 			want: wantString("hello"),
 		},
+		{
+			name:    "wasmtime-sha256sum",
+			runtime: "wasmtime",
+			inputs: []input{
+				{image: "alpine:3.17"},
+				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+			},
+			args:        []string{"/bin/sh", "-c", `seq 1 100 | sha256sum | cut -f 1 -d " " | tr -d '\n'`},
+			want:        wantString("93d4e5c77838e0aa5cb6647c385c810a7c2782bf769029e6c420052048ab22bb"),
+		},
 		// {
 		// 	name:    "wamr-hello",
 		// 	runtime: "iwasm",
@@ -91,14 +101,14 @@ func BenchmarkHello(t *testing.B) {
 		// 	want: wantString("hello"),
 		// },
 
-		// other arch
-		{
-			name:    "wasmtime-hello-arch-aarch64",
-			runtime: "wasmtime",
-			inputs:  []input{{image: "alpine:3.17", convertOpts: []string{"--target-arch=aarch64"}}},
-			args:    []string{"echo", "-n", "hello"},
-			want:    wantString("hello"),
-		},
+		// // other arch
+		// {
+		// 	name:    "wasmtime-hello-arch-aarch64",
+		// 	runtime: "wasmtime",
+		// 	inputs:  []input{{image: "alpine:3.17", convertOpts: []string{"--target-arch=aarch64"}}},
+		// 	args:    []string{"echo", "-n", "hello"},
+		// 	want:    wantString("hello"),
+		// },
 
 		// no wizer
 		{
