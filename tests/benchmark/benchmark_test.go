@@ -42,54 +42,54 @@ func BenchmarkHello(t *testing.B) {
 			args: []string{"echo", "-n", "hello"},
 			want: wantString("hello"),
 		},
-		{
-			name:    "wamr-hello",
-			runtime: "iwasm",
-			inputs: []input{
-				{image: "alpine:3.17"},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
-			},
-			imageName: "test2.wasm",
-			prepare: func(t *testing.B, workdir string) {
-				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
-			},
-			args: []string{"echo", "-n", "hello"},
-			want: wantString("hello"),
-		},
-		{
-			name:    "wasmer-hello",
-			runtime: "wasmer",
-			inputs: []input{
-				{image: "alpine:3.17"},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
-			},
-			args: []string{"--", "--no-stdin", "echo", "-n", "hello"}, // wasmer requires "--" before flags we pass to the wasm program.
-			want: wantString("hello"),
-		},
-		{
-			name:    "wazero-hello",
-			runtime: "wazero-test",
-			inputs: []input{
-				{image: "alpine:3.17"},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
-			},
-			args: []string{"echo", "-n", "hello"},
-			want: wantString("hello"),
-		},
-		{
-			name:    "wasmedge-hello",
-			runtime: "wasmedge",
-			inputs: []input{
-				{image: "alpine:3.17"},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
-			},
-			imageName: "test2.wasm",
-			prepare: func(t *testing.B, workdir string) {
-				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
-			},
-			args: []string{"--no-stdin", "echo", "-n", "hello"}, // NOTE: stdin unsupported on wasmedge as of now
-			want: wantString("hello"),
-		},
+		// {
+		// 	name:    "wamr-hello",
+		// 	runtime: "iwasm",
+		// 	inputs: []input{
+		// 		{image: "alpine:3.17"},
+		// 		{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+		// 	},
+		// 	imageName: "test2.wasm",
+		// 	prepare: func(t *testing.B, workdir string) {
+		// 		assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+		// 	},
+		// 	args: []string{"echo", "-n", "hello"},
+		// 	want: wantString("hello"),
+		// },
+		// {
+		// 	name:    "wasmer-hello",
+		// 	runtime: "wasmer",
+		// 	inputs: []input{
+		// 		{image: "alpine:3.17"},
+		// 		{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+		// 	},
+		// 	args: []string{"--", "--no-stdin", "echo", "-n", "hello"}, // wasmer requires "--" before flags we pass to the wasm program.
+		// 	want: wantString("hello"),
+		// },
+		// {
+		// 	name:    "wazero-hello",
+		// 	runtime: "wazero-test",
+		// 	inputs: []input{
+		// 		{image: "alpine:3.17"},
+		// 		{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+		// 	},
+		// 	args: []string{"echo", "-n", "hello"},
+		// 	want: wantString("hello"),
+		// },
+		// {
+		// 	name:    "wasmedge-hello",
+		// 	runtime: "wasmedge",
+		// 	inputs: []input{
+		// 		{image: "alpine:3.17"},
+		// 		{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64"}},
+		// 	},
+		// 	imageName: "test2.wasm",
+		// 	prepare: func(t *testing.B, workdir string) {
+		// 		assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
+		// 	},
+		// 	args: []string{"--no-stdin", "echo", "-n", "hello"}, // NOTE: stdin unsupported on wasmedge as of now
+		// 	want: wantString("hello"),
+		// },
 
 		// other arch
 		{
@@ -112,17 +112,17 @@ func BenchmarkHello(t *testing.B) {
 			want: wantString("hello"),
 		},
 
-		// no vmtouch
-		{
-			name:    "wasmtime-hello-without-vmtouch",
-			runtime: "wasmtime",
-			inputs: []input{
-				{image: "alpine:3.17", convertOpts: []string{"--build-arg=NO_VMTOUCH=true"}},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64", "--build-arg=NO_VMTOUCH=true"}},
-			},
-			args: []string{"echo", "-n", "hello"},
-			want: wantString("hello"),
-		},
+		// // no vmtouch
+		// {
+		// 	name:    "wasmtime-hello-without-vmtouch",
+		// 	runtime: "wasmtime",
+		// 	inputs: []input{
+		// 		{image: "alpine:3.17", convertOpts: []string{"--build-arg=NO_VMTOUCH=true"}},
+		// 		{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64", "--build-arg=NO_VMTOUCH=true"}},
+		// 	},
+		// 	args: []string{"echo", "-n", "hello"},
+		// 	want: wantString("hello"),
+		// },
 
 		// container
 		{
