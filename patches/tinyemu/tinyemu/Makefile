@@ -67,7 +67,7 @@ EMU_OBJS:=virtio.o pci.o fs.o cutils.o iomem.o simplefb.o \
 
 ifdef CONFIG_SLIRP
 CFLAGS+=-DCONFIG_SLIRP
-EMU_OBJS+=$(addprefix slirp/, bootp.o ip_icmp.o mbuf.o slirp.o tcp_output.o cksum.o ip_input.o misc.o socket.o tcp_subr.o udp.o if.o ip_output.o sbuf.o tcp_input.o tcp_timer.o)
+EMU_OBJS+=$(addprefix slirp/, bootp.o ip_icmp.o mbuf.o slirp.o tcp_output.o cksum.o ip_input.o misc.o socket.o tcp_subr.o udp.o if.o ip_output.o sbuf.o tcp_input.o tcp_timer.o wasi_socket_ext.o)
 endif
 
 ifndef CONFIG_WIN32
