@@ -31,6 +31,7 @@ func BenchmarkHello(t *testing.B) {
 		args         []string
 		want         func(t *testing.B, in io.Writer, out io.Reader)
 		noConversion bool
+		customC2WBin string
 	}{
 		{
 			name:    "wasmtime-hello",
@@ -51,6 +52,26 @@ func BenchmarkHello(t *testing.B) {
 			},
 			args:        []string{"/bin/sh", "-c", `seq 1 100 | sha256sum | cut -f 1 -d " " | tr -d '\n'`},
 			want:        wantString("93d4e5c77838e0aa5cb6647c385c810a7c2782bf769029e6c420052048ab22bb"),
+		},
+		{
+			name:    "wasmtime-hello-legacy",
+			runtime: "wasmtime",
+			inputs: []input{
+				{image: "alpine:3.17", convertOpts: []string{"--target-arch=amd64"}},
+			},
+			args: []string{"echo", "-n", "hello"},
+			want: wantString("hello"),
+			customC2WBin: "c2w-old",
+		},
+		{
+			name:    "wasmtime-sha256sum-legacy",
+			runtime: "wasmtime",
+			inputs: []input{
+				{image: "alpine:3.17", convertOpts: []string{"--target-arch=amd64"}},
+			},
+			args:        []string{"/bin/sh", "-c", `seq 1 100 | sha256sum | cut -f 1 -d " " | tr -d '\n'`},
+			want:        wantString("93d4e5c77838e0aa5cb6647c385c810a7c2782bf769029e6c420052048ab22bb"),
+			customC2WBin: "c2w-old",
 		},
 		// {
 		// 	name:    "wamr-hello",
@@ -110,17 +131,17 @@ func BenchmarkHello(t *testing.B) {
 		// 	want:    wantString("hello"),
 		// },
 
-		// no wizer
-		{
-			name:    "wasmtime-hello-without-wizer",
-			runtime: "wasmtime",
-			inputs: []input{
-				{image: "alpine:3.17", convertOpts: []string{"--build-arg=OPTIMIZATION_MODE=native"}},
-				{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64", "--build-arg=OPTIMIZATION_MODE=native"}},
-			},
-			args: []string{"echo", "-n", "hello"},
-			want: wantString("hello"),
-		},
+		// // no wizer
+		// {
+		// 	name:    "wasmtime-hello-without-wizer",
+		// 	runtime: "wasmtime",
+		// 	inputs: []input{
+		// 		{image: "alpine:3.17", convertOpts: []string{"--build-arg=OPTIMIZATION_MODE=native"}},
+		// 		{image: "riscv64/alpine:20221110", convertOpts: []string{"--target-arch=riscv64", "--build-arg=OPTIMIZATION_MODE=native"}},
+		// 	},
+		// 	args: []string{"echo", "-n", "hello"},
+		// 	want: wantString("hello"),
+		// },
 
 		// // no vmtouch
 		// {
@@ -161,7 +182,14 @@ func BenchmarkHello(t *testing.B) {
 				testImage := in.image
 				if !tt.noConversion {
 					testImage = filepath.Join(tmpdir, "test.wasm")
-					c2wCmd := exec.Command(c2wBin, append(in.convertOpts, "--assets="+assetPath, in.image, testImage)...)
+					bin := c2wBin
+					opts := in.convertOpts
+					if tt.customC2WBin != "" {
+						bin = tt.customC2WBin
+					} else {
+						opts = append(opts, "--assets="+assetPath)
+					}
+					c2wCmd := exec.Command(bin, append(opts, in.image, testImage)...)
 					// c2wCmd.Stdout = os.Stdout
 					// c2wCmd.Stderr = os.Stderr
 					assert.NilError(t, c2wCmd.Run())

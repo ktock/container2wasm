@@ -7,6 +7,7 @@ ARG WASMEDGE_VERSION=0.12.1
 ARG GOLANG_VERSION=1.20.3
 ARG WASMER_VERSION=v3.3.0
 ARG WASMTIME_VERSION=9.0.3
+ARG C2W_OLD_VERSION=ff4cbdb3fda89e03fe5858e83c41507cea2c23d9
 
 FROM docker:${DOCKER_VERSION}-dind AS dind
 FROM docker/buildx-bin:${BUILDX_VERSION} AS buildx
@@ -16,6 +17,14 @@ COPY ./tests/wazero /wazero
 WORKDIR /wazero
 RUN go build -o /out/wazero-test main.go
 
+FROM golang:1.20 AS c2w-old-dev
+ARG C2W_OLD_VERSION
+RUN apt-get update && apt-get install -y git
+RUN git clone https://github.com/ktock/container2wasm && \
+    cd ./container2wasm && \
+    git checkout "${C2W_OLD_VERSION}" && \
+    mkdir /out && make -j$(nproc) && mv out/c2w /out/
+
 FROM ubuntu:22.04
 ARG BUILDX_VERSION
 ARG DOCKER_VERSION
@@ -24,6 +33,7 @@ ARG WASMEDGE_VERSION
 ARG GOLANG_VERSION
 ARG WASMER_VERSION
 ARG WASMTIME_VERSION
+ARG C2W_OLD_VERSION
 
 RUN apt-get update && apt-get install -y ca-certificates iptables openssl pigz xz-utils curl wget
 
@@ -55,6 +65,9 @@ ENV PATH="$WASMER_DIR/bin:$PATH:$WASMER_DIR/globals/wapm_packages/.bin"
 RUN wget https://github.com/WasmEdge/WasmEdge/releases/download/${WASMEDGE_VERSION}/WasmEdge-${WASMEDGE_VERSION}-ubuntu20.04_x86_64.tar.gz && \
     tar zxvf WasmEdge-${WASMEDGE_VERSION}-ubuntu20.04_x86_64.tar.gz && \
     cp -R ./WasmEdge-${WASMEDGE_VERSION}-Linux/* /usr/local/
+
+# install old c2w
+COPY --from=c2w-old-dev /out/c2w /usr/local/bin/c2w-old
 
 # install wazero
 COPY --from=wazero-test-dev /out/wazero-test /usr/local/bin/
