@@ -12,7 +12,7 @@ require (
 	github.com/opencontainers/runtime-spec v1.1.0-rc.2
 	github.com/urfave/cli v1.22.13
 	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.7.0
+	golang.org/x/sys v0.8.0
 	gotest.tools/v3 v3.4.0
 )
 
