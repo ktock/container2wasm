@@ -194,9 +194,12 @@ RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
 FROM ubuntu:22.04 AS tinyemu-config-dev
 ARG LINUX_LOGLEVEL
 ARG VM_MEMORY_SIZE_MB
+ARG NETWORKING
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
 COPY --link --from=assets /patches/tinyemu/tinyemu.config.template /
-RUN cat /tinyemu.config.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB envsubst > /out/tinyemu.config
+COPY --link --from=assets /patches/tinyemu/tinyemu.config.template-net /
+RUN if [ "$NETWORKING" = "" ]; then FILE=tinyemu.config.template; else FILE=tinyemu.config.template-net; fi; \
+    cat /$FILE | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB envsubst > /out/tinyemu.config
 
 FROM scratch AS vm-riscv64-dev
 COPY --link --from=bbl-dev /out/bbl.bin /pack/bbl.bin
@@ -239,7 +242,7 @@ COPY --link --from=assets /patches/tinyemu/tinyemu /tinyemu
 WORKDIR /tinyemu
 ARG NETWORKING
 RUN make -j $(nproc) -f Makefile \
-    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP=${NETWORKING} \
+    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP=${NETWORKING} CONFIG_WASI=y \
     CC="${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -D_WASI_EMULATED_SIGNAL -DWASI -I/tools/wizer/include/" \
     EMU_LIBS="/tools/wasi-vfs/libwasi_vfs.a -lrt"
 

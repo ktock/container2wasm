@@ -147,7 +147,7 @@ func build(builderPath string, srcImgName string, destDir, destFile string, clic
 	if clicontext.Bool("net") {
 		buildxArgs = append(buildxArgs, "--build-arg", "NETWORKING=y")
 	} else {
-		buildxArgs = append(buildxArgs, "--build-arg", "NETWORKING=n")
+		buildxArgs = append(buildxArgs, "--build-arg", "NETWORKING=")
 	}
 	var dockerfilePath string
 	if o := clicontext.String("dockerfile"); o != "" {
