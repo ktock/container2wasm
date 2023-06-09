@@ -6,4 +6,5 @@
     kernel: "/pack/Image",
     cmdline: "console=hvc0 root=/dev/vda ro quiet virtio_net.napi_tx=false loglevel=${LOGLEVEL} init=/sbin/tini -- /sbin/init",
     drive0: { file: "/pack/rootfs.bin" },
+    eth0: { driver: "user" },
 }
