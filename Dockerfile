@@ -237,8 +237,9 @@ RUN git clone https://github.com/bytecodealliance/wizer && \
 
 COPY --link --from=assets /patches/tinyemu/tinyemu /tinyemu
 WORKDIR /tinyemu
+ARG NETWORKING
 RUN make -j $(nproc) -f Makefile \
-    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP=y \
+    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP=${NETWORKING} \
     CC="${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -D_WASI_EMULATED_SIGNAL -DWASI -I/tools/wizer/include/" \
     EMU_LIBS="/tools/wasi-vfs/libwasi_vfs.a -lrt"
 
