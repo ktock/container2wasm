@@ -238,10 +238,9 @@ RUN git clone https://github.com/bytecodealliance/wizer && \
 COPY --link --from=assets /patches/tinyemu/tinyemu /tinyemu
 WORKDIR /tinyemu
 RUN make -j $(nproc) -f Makefile \
-    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP= \
+    CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP=y \
     CC="${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -D_WASI_EMULATED_SIGNAL -DWASI -I/tools/wizer/include/" \
-    EMU_LIBS="/tools/wasi-vfs/libwasi_vfs.a -lrt" \
-    EMU_OBJS="virtio.o pci.o fs.o cutils.o iomem.o simplefb.o json.o machine.o temu.o wasi.o riscv_machine.o softfp.o riscv_cpu32.o riscv_cpu64.o fs_disk.o"
+    EMU_LIBS="/tools/wasi-vfs/libwasi_vfs.a -lrt"
 
 FROM tinyemu-dev-common AS tinyemu-dev-native
 COPY --link --from=vm-riscv64-dev /pack /minpack
