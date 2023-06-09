@@ -98,7 +98,7 @@ typedef struct __wasi_addr_info_hints_t {
     uint8_t hints_enabled;
 } __wasi_addr_info_hints_t;
 
-#ifdef __wasi__
+#ifdef WASI
 /**
  * Reimplement below POSIX APIs with __wasi_sock_XXX functions.
  *
@@ -117,7 +117,9 @@ typedef struct __wasi_addr_info_hints_t {
 #define SO_RCVTIMEO 20
 #define SO_SNDTIMEO 21
 
+#ifndef TCP_NODELAY
 #define TCP_NODELAY 1
+#endif
 #define TCP_KEEPIDLE 4
 #define TCP_KEEPINTVL 5
 #define TCP_QUICKACK 12
