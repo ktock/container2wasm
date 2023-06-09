@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/containerd/containerd/archive"
 	"github.com/containerd/containerd/archive/compression"
@@ -236,6 +237,26 @@ func createSpec(r io.Reader, rootfs string, debug bool, debugInit bool, imageCon
 	return nil
 }
 
+func newUnixCaps() []string {
+	return []string{
+		"CAP_CHOWN",
+		"CAP_DAC_OVERRIDE",
+		"CAP_FSETID",
+		"CAP_FOWNER",
+		"CAP_MKNOD",
+		"CAP_NET_RAW",
+		"CAP_SETGID",
+		"CAP_SETUID",
+		"CAP_SETFCAP",
+		"CAP_SETPCAP",
+		"CAP_NET_BIND_SERVICE",
+		"CAP_SYS_CHROOT",
+		"CAP_KILL",
+		"CAP_AUDIT_WRITE",
+		"CAP_NET_ADMIN",
+	}
+}
+
 func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	ic := config.Config
 	ctdCtx := ctdnamespaces.WithNamespace(context.TODO(), "default")
@@ -245,11 +266,15 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	}
 	s, err := ctdoci.GenerateSpecWithPlatform(ctdCtx, nil, p, &ctdcontainers.Container{},
 		ctdoci.WithHostNamespace(specs.NetworkNamespace),
-		ctdoci.WithoutRunMount,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate spec: %w", err)
 	}
+
+	s.Process.Capabilities.Bounding = newUnixCaps()
+	s.Process.Capabilities.Permitted = newUnixCaps()
+	s.Process.Capabilities.Effective = newUnixCaps()
+
 	if username := ic.User; username != "" {
 		passwdPath, err := user.GetPasswdPath()
 		if err != nil {
@@ -302,21 +327,21 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 }
 
 func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPath, runtimeConfigPath, imageRootfsPath string, noVmtouch bool) (*inittype.BootConfig, error) {
-	runcArgs := []string{"run", "-b", runtimeBundlePath, "foo"}
+	runcArgs := []string{"-b", runtimeBundlePath, "foo"}
 	if debug {
 		runcArgs = append([]string{"--debug"}, runcArgs...)
 	}
 	var cmdPreRun [][]string
 	if !noVmtouch {
 		cmdPreRun = [][]string{
-			[]string{"vmtouch", "-tv", "/sbin/runc", "/sbin/init"},
+			[]string{"vmtouch", "-tv", "/sbin/runc", "/sbin/init", "/sbin/start-runc"},
 		}
 	}
 	bootConfig := &inittype.BootConfig{
 		Debug:     debug,
 		DebugInit: debugInit,
 		Cmd: [][]string{
-			append([]string{"/sbin/runc"}, runcArgs...),
+			append([]string{"/sbin/start-runc"}, runcArgs...),
 		},
 		CmdPreRun: cmdPreRun,
 		Container: inittype.ContainerInfo{
@@ -367,19 +392,35 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 				},
 			},
 			{
-				// make etc writable (e.g. by udhcpc)
-				FSType: "tmpfs",
-				Src:    "tmpfs",
-				Dst:    "/etc",
-				PostFile: []inittype.FileInfo{
+				// FSType: "bind",
+				Src:   "/run/etc/hosts",
+				Dst:   "/etc/hosts",
+				Data:  "bind",
+				Flags: syscall.MS_BIND,
+				Dir: []inittype.DirInfo{
 					{
-						Path:     "/etc/hosts",
-						Mode:     0644,
+						Path: "/run/etc",
+						Mode: 0666, // TODO: better mode
+					},
+				},
+				File: []inittype.FileInfo{
+					{
+						Path:     "/run/etc/hosts",
+						Mode:     0666,
 						Contents: "127.0.0.1	localhost\n",
 					},
+				},
+			},
+			{
+				// FSType: "bind",
+				Src:   "/run/etc/resolv.conf",
+				Dst:   "/etc/resolv.conf",
+				Data:  "bind",
+				Flags: syscall.MS_BIND,
+				File: []inittype.FileInfo{
 					{
-						Path:     "/etc/resolv.conf",
-						Mode:     0644,
+						Path:     "/run/etc/resolv.conf",
+						Mode:     0666,
 						Contents: "",
 					},
 				},
@@ -403,37 +444,15 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 				Dir: []inittype.DirInfo{
 					{
 						Path: runtimeRootfsPath,
-						Mode: 0755,
+						Mode: 0666,
 					},
 					{
 						Path: "/run/rootfs-upper",
-						Mode: 0755,
+						Mode: 0666,
 					},
 					{
 						Path: "/run/rootfs-work",
-						Mode: 0755,
-					},
-				},
-				PostDir: []inittype.DirInfo{
-					{
-						Path: "/run/rootfs/etc/",
-						Mode: 0644,
-					},
-					{
-						Path: "/run/rootfs/etc/",
-						Mode: 0644,
-					},
-				},
-				PostFile: []inittype.FileInfo{
-					{
-						Path:     "/run/rootfs/etc/hosts",
-						Mode:     0644,
-						Contents: "127.0.0.1	localhost\n",
-					},
-					{
-						Path:     "/run/rootfs/etc/resolv.conf",
-						Mode:     0644,
-						Contents: "",
+						Mode: 0666,
 					},
 				},
 			},
