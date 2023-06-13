@@ -10,7 +10,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0-rc3
 	github.com/opencontainers/runc v1.1.7
 	github.com/opencontainers/runtime-spec v1.1.0-rc.3
-	github.com/urfave/cli v1.22.13
+	github.com/urfave/cli v1.22.14
 	golang.org/x/sync v0.2.0
 	golang.org/x/sys v0.8.0
 	gotest.tools/v3 v3.4.0
