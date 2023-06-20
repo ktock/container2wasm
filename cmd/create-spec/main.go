@@ -417,15 +417,15 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 				Dir: []inittype.DirInfo{
 					{
 						Path: runtimeRootfsPath,
-						Mode: 0666,
+						Mode: 0755,
 					},
 					{
 						Path: "/run/rootfs-upper",
-						Mode: 0666,
+						Mode: 0755,
 					},
 					{
 						Path: "/run/rootfs-work",
-						Mode: 0666,
+						Mode: 0755,
 					},
 				},
 			},
