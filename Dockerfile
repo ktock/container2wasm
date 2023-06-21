@@ -217,7 +217,6 @@ ARG WASI_VFS_VERSION
 ARG WASI_SDK_VERSION
 ARG WASI_SDK_VERSION_FULL
 ARG WIZER_VERSION
-ARG OUTPUT_NAME
 RUN apt-get update -y && apt-get install -y make curl git gcc xz-utils
 
 WORKDIR /wasi
@@ -261,7 +260,9 @@ RUN mv temu temu-org && /tools/wizer/wizer --allow-wasi --wasm-bulk-memory=true 
 RUN mkdir /minpack && cp /pack/rootfs.bin /minpack/
 
 FROM tinyemu-dev-${OPTIMIZATION_MODE} AS tinyemu-dev-packed
-RUN /tools/wasi-vfs/wasi-vfs pack /tinyemu/temu --mapdir /pack::/minpack -o packed && mkdir /out && mv packed /out/$OUTPUT_NAME
+RUN /tools/wasi-vfs/wasi-vfs pack /tinyemu/temu --mapdir /pack::/minpack -o packed && mkdir /out
+ARG OUTPUT_NAME
+RUN mv packed /out/$OUTPUT_NAME
 
 FROM emscripten/emsdk:$EMSDK_VERSION AS tinyemu-emscripten
 ARG JS_OUTPUT_NAME
@@ -429,8 +430,6 @@ ARG WASI_SDK_VERSION
 ARG WASI_SDK_VERSION_FULL
 ARG BINARYEN_VERSION
 ARG WIZER_VERSION
-ARG OUTPUT_NAME
-ARG INIT_DEBUG
 RUN apt-get update -y && apt-get install -y make curl git gcc xz-utils
 
 WORKDIR /wasi
@@ -469,6 +468,7 @@ RUN ${WASI_SDK_PATH}/bin/wasm-ld jmp.o jmp_wrapper.o --export=wasm_setjmp --expo
 
 COPY --link --from=assets /patches/bochs/Bochs /Bochs
 WORKDIR /Bochs/bochs
+ARG INIT_DEBUG
 RUN LOGGING_FLAG=--disable-logging && \
     if test "${INIT_DEBUG}" = "true" ; then LOGGING_FLAG=--enable-logging ; fi && \
     CC="${WASI_SDK_PATH}/bin/clang" CXX="${WASI_SDK_PATH}/bin/clang++" RANLIB="${WASI_SDK_PATH}/bin/ranlib" \
@@ -491,17 +491,19 @@ RUN mv bochs bochs-org && /tools/wizer/wizer --allow-wasi --wasm-bulk-memory=tru
 RUN mkdir /minpack && cp /pack/rootfs.bin /minpack/ && cp /pack/boot.iso /minpack/
 
 FROM bochs-dev-${OPTIMIZATION_MODE} AS bochs-dev-packed
-RUN /tools/wasi-vfs/wasi-vfs pack /Bochs/bochs/bochs --mapdir /pack::/minpack -o packed && mkdir /out && mv packed /out/$OUTPUT_NAME
+RUN /tools/wasi-vfs/wasi-vfs pack /Bochs/bochs/bochs --mapdir /pack::/minpack -o packed && mkdir /out
+ARG OUTPUT_NAME
+RUN mv packed /out/$OUTPUT_NAME
 
 FROM scratch AS wasi-amd64
 COPY --link --from=bochs-dev-packed /out/ /
 
 FROM emscripten/emsdk:$EMSDK_VERSION AS bochs-emscripten
-ARG INIT_DEBUG
 RUN apt-get install -y wget
 COPY --link --from=assets ./patches/bochs/Bochs /Bochs
 WORKDIR /Bochs/bochs
 COPY --link --from=vm-amd64-dev /pack /pack
+ARG INIT_DEBUG
 RUN LOGGING_FLAG=--disable-logging && \
     if test "${INIT_DEBUG}" = "true" ; then LOGGING_FLAG=--enable-logging ; fi && \
     CFLAGS="-O2 -s WASM=1 -s ASYNCIFY=1 -s ALLOW_MEMORY_GROWTH=1  -s TOTAL_MEMORY=$((20*1024*1024)) -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -D__GNU__" \
