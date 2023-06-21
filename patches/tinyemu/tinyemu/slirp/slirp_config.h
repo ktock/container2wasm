@@ -83,7 +83,7 @@
 #undef HAVE_SYS_BITYPES_H
 
 /* Define if the machine is big endian */
-//#undef HOST_WORDS_BIGENDIAN
+#undef HOST_WORDS_BIGENDIAN
 
 /* Define if you have readv */
 #undef HAVE_READV
@@ -137,7 +137,7 @@
 #define SIZEOF_INT 4
 
 /* Define to sizeof(char *) */
-#define SIZEOF_CHAR_P (HOST_LONG_BITS / 8)
+#define SIZEOF_CHAR_P 4
 
 /* Define if you have random() */
 #undef HAVE_RANDOM
