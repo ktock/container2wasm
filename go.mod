@@ -9,7 +9,7 @@ require (
 	github.com/jlaffaye/ftp v0.2.0
 	github.com/opencontainers/image-spec v1.1.0-rc4
 	github.com/opencontainers/runc v1.1.8
-	github.com/opencontainers/runtime-spec v1.1.0-rc.3
+	github.com/opencontainers/runtime-spec v1.1.0
 	github.com/urfave/cli v1.22.14
 	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.10.0
