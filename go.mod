@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/containerd/console v1.0.3
-	github.com/containerd/containerd v1.7.2
+	github.com/containerd/containerd v1.7.3
 	github.com/containerd/go-runc v1.1.0
 	github.com/jlaffaye/ftp v0.2.0
 	github.com/opencontainers/image-spec v1.1.0-rc4
