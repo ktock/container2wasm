@@ -65,6 +65,7 @@ RUN tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz
 ENV PATH=$PATH:/usr/local/go/bin
 
 # install container2wasm
+# NOTE: integration test script also depends on this path.
 COPY . /test/
 WORKDIR /test/
 RUN go build -o /usr/local/bin/ ./cmd/c2w

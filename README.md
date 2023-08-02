@@ -40,7 +40,13 @@ bin   dev  home  lib32	libx32	mnt  proc  run	 srv  tmp  var
 boot  etc  lib	 lib64	media	opt  root  sbin  sys  usr
 ```
 
-> NOTE: Directory mapping is available on non-x86_64 containers (TinyEMU-emulated ones) as of now. Other WASI features untested. Future version will support more WASI features.
+Directories mapped to the WASM program is accessible on the container as well.
+
+```
+$ mkdir -p /tmp/share/ && echo hi > /tmp/share/from-host
+$ wasmtime --mapdir /mnt/share::/tmp/share out.wasm cat /mnt/share/from-host
+hi
+```
 
 ### Container on Browser
 
@@ -184,8 +190,6 @@ $ wasmtime --mapdir /test/dir/share::/tmp/share /app/out.wasm ls /test/dir/share
 hi
 ```
 
-> NOTE: Directory mapping is available on non-x86_64 containers (TinyEMU-emulated) as of now. This should be available on all containers in the future.
-
 ## Motivation
 
 Though more and more programming languages start to support WASM, it's not easy to run the existing programs on WASM.
@@ -201,7 +205,7 @@ The following shows the techniqual details:
 - Builder: [BuildKit](https://github.com/moby/buildkit) runs the conversion steps written in Dockerfile.
 - Emulator: [Bochs](https://bochs.sourceforge.io/) emulates x86_64 CPU on WASM. [TinyEMU](https://bellard.org/tinyemu/) emulates RISC-V CPU on WASM. They're compiled to WASM using [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) (for WASI and on-browser) and [emscripten](https://github.com/emscripten-core/emscripten) (for on-browser).
 - Guest OS: Linux runs on the emulated CPU. [runc](https://github.com/opencontainers/runc) starts the container. Non-x86 and non-RISC-V containers runs with additional emulation by QEMU installed via [`tonistiigi/binfmt`](https://github.com/tonistiigi/binfmt).
-- Directory Mapping: WASI filesystem API makes host directories visible to the emulator. TinyEMU mounts them to the guest linux via virtio-9p. Unsupported on Bochs (for x86_64 emulation) as of now.
+- Directory Mapping: WASI filesystem API makes host directories visible to the emulator. Emulators mount them to the guest linux via virtio-9p.
 - Packaging: [wasi-vfs](https://github.com/kateinoigakukun/wasi-vfs) (for WASI and on-browser) and emscripten (for on-browser) are used for packaging the dependencies. The kernel is pre-booted during the build using [wizer](https://github.com/bytecodealliance/wizer/) to minimize the startup latency (for WASI only as of now).
 - Security: The converted container runs in the sandboxed WASM (WASI) VM with the limited access to the host system.
 
@@ -216,11 +220,11 @@ The following shows the techniqual details:
 
 |runtime |stdio|mapdir|note|
 |---|---|---|---|
-|wasmtime|:heavy_check_mark:|:construction:||
-|wamr(wasm-micro-runtime)|:heavy_check_mark:|:construction:||
-|wazero|:heavy_check_mark:|:construction:||
-|wasmer|:construction: (stdin unsupported)|:construction:|non-blocking stdin doesn't seem to work|
-|wasmedge|:construction: (stdin unsupported)|:construction:|non-blocking stdin doesn't seem to work|
+|wasmtime|:heavy_check_mark:|:heavy_check_mark:||
+|wamr(wasm-micro-runtime)|:heavy_check_mark:|:heavy_check_mark:||
+|wazero|:heavy_check_mark:|:heavy_check_mark:||
+|wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
+|wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
 
 ### risc-v and other architecutre's containers
 
@@ -231,14 +235,6 @@ The following shows the techniqual details:
 |wazero|:heavy_check_mark:|:heavy_check_mark:||
 |wasmer|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
 |wasmedge|:construction: (stdin unsupported)|:heavy_check_mark:|non-blocking stdin doesn't seem to work|
-
-Example of mapdir with wasmtime:
-
-```console
-$ mkdir -p /tmp/share/ && echo hi > /tmp/share/hi
-$ wasmtime --mapdir /test/dir/share::/tmp/share -- out.wasm --entrypoint=cat -- /test/dir/share/hi
-hi
-```
 
 ## Similar projects
 

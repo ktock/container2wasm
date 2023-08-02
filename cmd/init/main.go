@@ -104,22 +104,25 @@ func doInit() error {
 	}
 
 	wg.Wait()
-	if infoSourceRemoteAddr == "" {
 
-		// WASI-related filesystems
-		for _, tag := range []string{rootFSTag, packFSTag} {
-			dst := filepath.Join("/mnt", tag)
-			if err := os.Mkdir(dst, 0777); err != nil {
-				return err
-			}
-			log.Printf("mounting %q to %q\n", tag, dst)
-			if err := syscall.Mount(tag, dst, "9p", 0, "trans=virtio,version=9p2000.L,msize=8192"); err != nil {
-				log.Printf("failed mounting %q: %v\n", tag, err)
-				break
-			}
-		}
-
+	initMounts := []string{rootFSTag, packFSTag}
+	if infoSourceRemoteAddr != "" {
+		initMounts = []string{rootFSTag}
 	}
+
+	// WASI-related filesystems
+	for _, tag := range initMounts {
+		dst := filepath.Join("/mnt", tag)
+		if err := os.Mkdir(dst, 0777); err != nil {
+			return err
+		}
+		log.Printf("mounting %q to %q\n", tag, dst)
+		if err := syscall.Mount(tag, dst, "9p", 0, "trans=virtio,version=9p2000.L,msize=8192"); err != nil {
+			log.Printf("failed mounting %q: %v\n", tag, err)
+			break
+		}
+	}
+
 	specD, err := os.ReadFile(cfg.Container.RuntimeConfigPath)
 	if err != nil {
 		return err

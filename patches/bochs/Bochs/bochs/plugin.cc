@@ -1062,6 +1062,7 @@ plugin_t bx_builtin_plugins[] = {
 #if BX_SUPPORT_USB_XHCI
   BUILTIN_OPTPCI_PLUGIN_ENTRY(usb_xhci),
 #endif
+  BUILTIN_OPTPCI_PLUGIN_ENTRY(mapdirVirtio9p),
 #if BX_SUPPORT_SOUNDLOW
   BUILTIN_SND_PLUGIN_ENTRY(dummy),
   BUILTIN_SND_PLUGIN_ENTRY(file),
