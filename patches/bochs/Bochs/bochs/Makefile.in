@@ -143,6 +143,7 @@ NONINLINE_OBJS = \
 	plugin.o \
 	crc.o \
 	bxthread.o \
+	wasm.o \
 	@EXTRA_BX_OBJS@
 
 EXTERN_ENVIRONMENT_OBJS = \
@@ -819,3 +820,7 @@ plugin.o: plugin.@CPP_SUFFIX@ bochs.h config.h osdep.h gui/paramtree.h logio.h \
  plugin.h extplugin.h param_names.h pc_system.h bx_debug/debug.h config.h \
  osdep.h memory/memory-bochs.h gui/siminterface.h gui/paramtree.h \
  gui/gui.h plugin.h
+wasm.o: wasm.@CPP_SUFFIX@ iodev/iodev.h bochs.h config.h osdep.h gui/paramtree.h \
+ logio.h misc/bswap.h plugin.h extplugin.h param_names.h pc_system.h \
+ bx_debug/debug.h config.h osdep.h memory/memory-bochs.h \
+ gui/siminterface.h gui/gui.h iodev/pci.h wasm.h

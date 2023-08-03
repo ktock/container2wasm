@@ -34,6 +34,10 @@
 #include "iodev/usb/usb_common.h"
 #endif
 
+#if defined(EMSCRIPTEN) || defined(WASI)
+#include "wasm.h"
+#endif
+
 #ifdef WASI
 #include <wizer.h>
 extern "C" {
@@ -315,34 +319,6 @@ void print_statistics_tree(bx_param_c *node, int level)
 
 bool vm_init_done = false;
 
-typedef struct {
-  char *contents;
-  int len;
-  int lim;
-} FSVirtFile;
-
-int write_info(FSVirtFile *f, int pos, int len, const char *str)
-{
-  if ((pos + len) > f->lim) {
-    printf("too many write (%d > %d)", pos + len, f->lim);
-    return -1;
-  }
-  for (int i = 0; i < len; i++) {
-    f->contents[pos + i] = str[i];
-  }
-  return len;
-}
-
-int putchar_info(FSVirtFile *f, int pos, char c)
-{
-  if ((pos + 1) > f->lim) {
-    printf("too many write (%d > %d)", pos + 1, f->lim);
-    return -1;
-  }
-  f->contents[pos] = c;
-  return 1;
-}
-
 int write_entrypoint(FSVirtFile *f, int pos1, const char *entrypoint)
 {
   int p, pos = pos1;
@@ -490,6 +466,9 @@ int init_wasi_info(int argc, char **argv, FSVirtFile *info)
     }
 
     info->len = pos;
+#ifdef WASI
+    info->len += write_preopen_info(info, pos);
+#endif
     return 0;
 }
 
@@ -733,90 +712,6 @@ int WINAPI WinMain(
 #ifdef WASI
 extern "C" {
 extern void __wasi_vfs_rt_init(void);
-}
-
-#include <wasi/libc.h>
-
-// Populating preopen in the same way as wasi-libc does as well as updating
-// the preopens list managed by wasi-libc.
-// https://github.com/WebAssembly/wasi-libc/blob/wasi-sdk-19/libc-bottom-half/sources/preopens.c
-// We use our list of preopenes for mounting them to the container.
-
-typedef struct preopen {
-    /// The path prefix associated with the file descriptor.
-    const char *prefix;
-
-    /// The file descriptor.
-    __wasi_fd_t fd;
-} preopen;
-
-preopen *preopens;
-size_t num_preopens = 0;
-size_t preopen_capacity = 0;
-
-static int populate_preopens() {
-  for (__wasi_fd_t fd = 3; fd != 0; ++fd) {
-    __wasi_prestat_t prestat;
-    __wasi_errno_t ret = __wasi_fd_prestat_get(fd, &prestat);
-    if (ret == __WASI_ERRNO_BADF) {
-      break;
-    }
-    if (ret != __WASI_ERRNO_SUCCESS)
-      return -1;
-
-    switch (prestat.tag) {
-    case __WASI_PREOPENTYPE_DIR: {
-      char *prefix = (char *) malloc(prestat.u.dir.pr_name_len + 1);
-      if (prefix == NULL)
-        return -1;
-      if (__wasi_fd_prestat_dir_name(fd, (uint8_t *)prefix, prestat.u.dir.pr_name_len) != __WASI_ERRNO_SUCCESS)
-        return -1;
-      prefix[prestat.u.dir.pr_name_len] = '\0';
-
-      int off = 0;
-      while (1) {
-        if (prefix[off] == '/') {
-          off++;
-        } else if (prefix[off] == '.' && prefix[off + 1] == '/') {
-          off += 2;
-        } else if (prefix[off] == '.' && prefix[off + 1] == 0) {
-          off++;
-        } else {
-          break;
-        }
-      }
-
-      char *p = &(prefix[off]);
-      if (__wasilibc_register_preopened_fd(fd, strdup(p)) != 0)
-        return -1;
-
-      if (num_preopens == preopen_capacity) {
-        size_t new_capacity = preopen_capacity == 0 ? 4 : preopen_capacity * 2;
-        preopen *new_preopens = (preopen *)calloc(sizeof(preopen), new_capacity);
-        if (new_preopens == NULL) {
-          return -1;
-        }
-        memcpy(new_preopens, preopens, num_preopens * sizeof(preopen));
-        free(preopens);
-        preopens = new_preopens;
-        preopen_capacity = new_capacity;
-      }
-
-      char *prefix2 = strdup(p);
-      if (prefix2 == NULL)
-        return -1;
-
-      preopens[num_preopens++] = (preopen) { prefix2, fd, };
-      free(prefix);
-
-      break;
-    }
-    default:
-      break;
-    }
-  }
-
-  return 0;
 }
 
 int wasm_start(int (main)()) {

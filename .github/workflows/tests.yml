@@ -26,9 +26,15 @@ jobs:
   test:
     runs-on: ubuntu-22.04
     name: Test
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
     steps:
     - uses: actions/checkout@v3
     - name: Test
+      env:
+        GO_TEST_FLAGS: -run ${{ matrix.target }}
       run: |
         make test
 
