@@ -40,7 +40,7 @@ bin   dev  home  lib32	libx32	mnt  proc  run	 srv  tmp  var
 boot  etc  lib	 lib64	media	opt  root  sbin  sys  usr
 ```
 
-Directories mapped to the WASM program is accessible on the container as well.
+Directory mapped from the host is accessible on the container.
 
 ```
 $ mkdir -p /tmp/share/ && echo hi > /tmp/share/from-host
@@ -182,7 +182,7 @@ wasmtime -- /app/out.wasm --entrypoint=echo hello
 
 ### Directory mapping
 
-Directories mapped to the WASM program is accessible on the container as well.
+Directory mapped from the host is accessible on the container.
 
 ```
 $ mkdir -p /tmp/share/ && echo hi > /tmp/share/hi
