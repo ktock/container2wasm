@@ -17,8 +17,8 @@ func TestWamr(t *testing.T) {
 			Name:    "wamr-hello",
 			Runtime: "iwasm",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
 			Prepare: func(t *testing.T, workdir string) {
@@ -31,8 +31,8 @@ func TestWamr(t *testing.T) {
 			Name:    "wamr-sh",
 			Runtime: "iwasm",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
 			Prepare: func(t *testing.T, workdir string) {
@@ -45,8 +45,8 @@ func TestWamr(t *testing.T) {
 			Name:    "wamr-mapdir",
 			Runtime: "iwasm",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
 			Prepare: func(t *testing.T, workdir string) {
@@ -72,8 +72,8 @@ func TestWamr(t *testing.T) {
 			Name:    "wamr-files",
 			Runtime: "iwasm",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
 			Prepare: func(t *testing.T, workdir string) {
@@ -89,8 +89,8 @@ func TestWamr(t *testing.T) {
 			Name:    "wamr-mapdir-io",
 			Runtime: "iwasm",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
 			Prepare: func(t *testing.T, workdir string) {

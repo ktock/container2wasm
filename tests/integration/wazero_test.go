@@ -16,8 +16,8 @@ func TestWazero(t *testing.T) {
 			Name:    "wazero-hello",
 			Runtime: "wazero-test",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Args: utils.StringFlags("echo", "-n", "hello"),
 			Want: utils.WantString("hello"),
@@ -26,8 +26,8 @@ func TestWazero(t *testing.T) {
 			Name:    "wazero-sh",
 			Runtime: "wazero-test",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
@@ -36,8 +36,8 @@ func TestWazero(t *testing.T) {
 			Name:    "wazero-mapdir",
 			Runtime: "wazero-test",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Prepare: func(t *testing.T, workdir string) {
 				mapdirTestDir := filepath.Join(workdir, "wazero-mapdirtest/testdir")
@@ -60,8 +60,8 @@ func TestWazero(t *testing.T) {
 			Name:    "wazero-files",
 			Runtime: "wazero-test",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ",
@@ -73,8 +73,8 @@ func TestWazero(t *testing.T) {
 			Name:    "wazero-mapdir-io",
 			Runtime: "wazero-test",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Prepare: func(t *testing.T, workdir string) {
 				mapdirTestDir := filepath.Join(workdir, "wazero-mapdirtest-io")
