@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -16,9 +17,32 @@ import (
 // TODO: Make it a flag
 const assetPath = "/test/"
 
+type Architecture int
+
+const (
+	X86_64 Architecture = iota
+	RISCV64
+	AArch64
+)
+
+func archToString(t *testing.T, a Architecture) string {
+	switch a {
+	case X86_64:
+		return "x86_64"
+	case RISCV64:
+		return "riscv64"
+	case AArch64:
+		return "aarch64"
+	default:
+		t.Fatalf("unknown architecture %d", a)
+		return ""
+	}
+}
+
 type Input struct {
-	Image       string
-	ConvertOpts []string
+	Image        string
+	ConvertOpts  []string
+	Architecture Architecture
 }
 
 type TestSpec struct {
@@ -40,7 +64,7 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 		tt := tt
 		for _, in := range tt.Inputs {
 			in := in
-			t.Run(strings.Join(append([]string{tt.Name, in.Image}, in.ConvertOpts...), ","), func(t *testing.T) {
+			t.Run(strings.ReplaceAll(strings.Join(append([]string{tt.Name, in.Image, fmt.Sprintf("arch=%s", archToString(t, in.Architecture))}, in.ConvertOpts...), ","), "/", "-"), func(t *testing.T) {
 				if !tt.NoParallel {
 					t.Parallel()
 				}

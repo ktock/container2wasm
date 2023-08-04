@@ -32,9 +32,14 @@ jobs:
         target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
     steps:
     - uses: actions/checkout@v3
-    - name: Test
+    - name: x86_64
       env:
-        GO_TEST_FLAGS: -run ${{ matrix.target }}
+        GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=x86_64.*
+      run: |
+        make test
+    - name: riscv64
+      env:
+        GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=(riscv64|aarch64).*
       run: |
         make test
 

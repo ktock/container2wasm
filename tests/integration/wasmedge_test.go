@@ -17,8 +17,8 @@ func TestWasmedge(t *testing.T) {
 			Name:    "wasmedge-hello",
 			Runtime: "wasmedge",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
 			Prepare: func(t *testing.T, workdir string) {
@@ -33,8 +33,8 @@ func TestWasmedge(t *testing.T) {
 			Name:    "wasmedge-mapdir",
 			Runtime: "wasmedge",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
 			Prepare: func(t *testing.T, workdir string) {

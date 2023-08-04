@@ -16,8 +16,8 @@ func TestWasmtime(t *testing.T) {
 			Name:    "wasmtime-hello",
 			Runtime: "wasmtime",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Args: utils.StringFlags("echo", "-n", "hello"),
 			Want: utils.WantString("hello"),
@@ -26,8 +26,8 @@ func TestWasmtime(t *testing.T) {
 			Name:    "wasmtime-sh",
 			Runtime: "wasmtime",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
@@ -36,8 +36,8 @@ func TestWasmtime(t *testing.T) {
 			Name:    "wasmtime-mapdir",
 			Runtime: "wasmtime",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Prepare: func(t *testing.T, workdir string) {
 				mapdirTestDir := filepath.Join(workdir, "wasmtime-mapdirtest")
@@ -59,8 +59,8 @@ func TestWasmtime(t *testing.T) {
 			Name:    "wasmtime-files",
 			Runtime: "wasmtime",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ",
@@ -71,8 +71,8 @@ func TestWasmtime(t *testing.T) {
 		{
 			Name: "wasmtime-mapdir-io",
 			Inputs: []utils.Input{
-				{Image: "alpine:3.17"},
-				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}},
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			Prepare: func(t *testing.T, workdir string) {
 				mapdirTestDir := filepath.Join(workdir, "wasmtime-mapdirtest-io")
@@ -108,7 +108,7 @@ func TestWasmtime(t *testing.T) {
 		{
 			Name:       "wasmtime-hello-arch-aarch64",
 			Runtime:    "wasmtime",
-			Inputs:     []utils.Input{{Image: "alpine:3.17", ConvertOpts: []string{"--target-arch=aarch64"}}},
+			Inputs:     []utils.Input{{Image: "alpine:3.17", ConvertOpts: []string{"--target-arch=aarch64"}, Architecture: utils.AArch64}},
 			Args:       utils.StringFlags("echo", "-n", "hello"),
 			Want:       utils.WantString("hello"),
 			NoParallel: true, // avoid conflicting image name
