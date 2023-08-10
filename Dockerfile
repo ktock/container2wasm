@@ -36,7 +36,7 @@ RUN git clone -b ${SOURCE_REPO_VERSION} ${SOURCE_REPO} /assets
 FROM scratch AS assets
 COPY --link --from=assets-base /assets /
 
-FROM golang:1.20-bullseye AS golang-base
+FROM golang:1.21-bullseye AS golang-base
 
 FROM golang-base AS bundle-dev
 ARG TARGETPLATFORM
