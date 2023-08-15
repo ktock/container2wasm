@@ -474,7 +474,7 @@ RUN LOGGING_FLAG=--disable-logging && \
     CC="${WASI_SDK_PATH}/bin/clang" CXX="${WASI_SDK_PATH}/bin/clang++" RANLIB="${WASI_SDK_PATH}/bin/ranlib" \
     CFLAGS="--sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -D_WASI_EMULATED_SIGNAL -DWASI -D__GNU__ -O2 -I/jmp/ -I/tools/wizer/include/" \
     CXXFLAGS="${CFLAGS}" \
-    ./configure --host wasm32-unknown-wasi --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci --enable-ne2000 --with-nogui \
+    ./configure --host wasm32-unknown-wasi --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci \
     --disable-large-ramfile --disable-show-ips --disable-stats ${LOGGING_FLAG} \
     --enable-repeat-speedups --enable-fast-function-calls --disable-trace-linking --enable-handlers-chaining # TODO: --enable-trace-linking causes "out of bounds memory access"
 RUN make -j$(nproc) bochs EMU_DEPS="/tools/wasi-vfs/libwasi_vfs.a /jmp/jmp -lrt"
@@ -508,7 +508,7 @@ RUN LOGGING_FLAG=--disable-logging && \
     if test "${INIT_DEBUG}" = "true" ; then LOGGING_FLAG=--enable-logging ; fi && \
     CFLAGS="-O2 -s WASM=1 -s ASYNCIFY=1 -s ALLOW_MEMORY_GROWTH=1  -s TOTAL_MEMORY=$((20*1024*1024)) -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -D__GNU__" \
     CXXFLAGS="${CFLAGS}" \
-    emconfigure ./configure --host wasm32-unknown-emscripten --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci --enable-ne2000 --with-nogui \
+    emconfigure ./configure --host wasm32-unknown-emscripten --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci \
     --disable-large-ramfile --disable-show-ips --disable-stats ${LOGGING_FLAG} \
     --enable-repeat-speedups --enable-fast-function-calls --disable-trace-linking --enable-handlers-chaining # TODO: --enable-trace-linking causes "too much recursion"
 RUN emmake make -j$(nproc) bochs EMU_DEPS="--preload-file /pack"

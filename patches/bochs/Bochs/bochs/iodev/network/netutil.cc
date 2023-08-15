@@ -23,8 +23,6 @@
 
 #define BX_PLUGGABLE
 
-#include "iodev.h"
-
 #ifdef BXHUB
 #include "config.h"
 #define WIN32_LEAN_AND_MEAN
@@ -62,7 +60,6 @@ typedef struct ftp_session {
   char *last_fname;
   char dirlist_tmp[16];
   struct ftp_session *next;
-  char *databuf;
 } ftp_session_t;
 
 
@@ -1572,13 +1569,6 @@ void vnet_server_c::ftp_send_data_prep(tcp_conn_t *tcpc_cmd, tcp_conn_t *tcpc_da
                                        const char *path, unsigned data_len)
 {
   ftp_session_t *fs = (ftp_session_t*)tcpc_cmd->data;
-  if (fs->databuf != NULL) {
-    fs->data_xfer_fd = -1;
-    fs->data_xfer_size = data_len;
-    fs->data_xfer_pos = 0;
-    ftp_send_data(tcpc_cmd, tcpc_data);
-    return;
-  }
   fs->data_xfer_fd = open(path, O_RDONLY
 #ifdef O_BINARY
                           | O_BINARY
@@ -1602,13 +1592,8 @@ void vnet_server_c::ftp_send_data(tcp_conn_t *tcpc_cmd, tcp_conn_t *tcpc_data)
   }
   if (data_len > 0) {
     buffer = new Bit8u[data_len];
-    if (fs->databuf != NULL) {
-      memcpy(buffer + fs->data_xfer_pos, fs->databuf, data_len);
-      fs->databuf = NULL;
-    } else {
-      lseek(fs->data_xfer_fd, fs->data_xfer_pos, SEEK_SET);
-      read(fs->data_xfer_fd, buffer, data_len);
-    }
+    lseek(fs->data_xfer_fd, fs->data_xfer_pos, SEEK_SET);
+    read(fs->data_xfer_fd, buffer, data_len);
   }
   fs->data_xfer_pos += tcpipv4_send_data(tcpc_data, buffer, data_len, 0);
   if (fs->data_xfer_pos == fs->data_xfer_size) {
@@ -1658,13 +1643,7 @@ void vnet_server_c::ftp_list_directory(tcp_conn_t *tcpc_cmd, tcp_conn_t *tcpc_da
     sprintf(abspath, "%s%s", tftp_root, subdir);
   }
   strcpy(fs->dirlist_tmp, "dirlist.XXXXXX");
-  char *buf;
-  bool use_buf = false;
-#if defined(WASI) || defined(EMSCRIPTEN)
-  use_buf = true;
-  buf = (char*)malloc(4096); // TODO: make size dynamic
-  fs->databuf = buf;
-#elif BX_HAVE_MKSTEMP
+#if BX_HAVE_MKSTEMP
   fd = mkstemp(fs->dirlist_tmp);
 #else
   mktemp(fs->dirlist_tmp);
@@ -1674,7 +1653,7 @@ void vnet_server_c::ftp_list_directory(tcp_conn_t *tcpc_cmd, tcp_conn_t *tcpc_da
 #endif
             , 0644);
 #endif
-  if ((fd >= 0) || use_buf) {
+  if (fd >= 0) {
 #ifndef WIN32
     setlocale(LC_ALL, "en_US");
     dir = opendir(abspath);
@@ -1703,11 +1682,7 @@ void vnet_server_c::ftp_list_directory(tcp_conn_t *tcpc_cmd, tcp_conn_t *tcpc_da
             sprintf(linebuf, "%s%c%c", dent->d_name, 13, 10);
           }
           if (strlen(linebuf) > 0) {
-            if (use_buf) {
-              memcpy(buf + size, linebuf, strlen(linebuf));
-            } else {
-              write(fd, linebuf, strlen(linebuf));
-            }
+            write(fd, linebuf, strlen(linebuf));
             size += strlen(linebuf);
           }
         }
@@ -1754,11 +1729,7 @@ void vnet_server_c::ftp_list_directory(tcp_conn_t *tcpc_cmd, tcp_conn_t *tcpc_da
             sprintf(linebuf, "%s%c%c", finddata.cFileName, 13, 10);
           }
           if (strlen(linebuf) > 0) {
-            if (use_buf) {
-              memcpy(buf + size, linebuf, strlen(linebuf));
-            } else {
-              write(fd, linebuf, strlen(linebuf));
-            }
+            write(fd, linebuf, strlen(linebuf));
             size += strlen(linebuf);
           }
         }
@@ -1813,19 +1784,7 @@ void vnet_server_c::ftp_send_file(tcp_conn_t *tcpc_cmd, tcp_conn_t *tcpc_data,
   char path[BX_PATHNAME_LEN], reply[80];
   unsigned size = 0;
 
-  if (!memcmp(arg, "resumed", 7)) {
-    if (SIM->get_param_bool(BXPN_WASM_RESUMED)->get()) {
-      fs->databuf = "1";
-      size = 1;
-    }
-  }
-
-  if ((info_file != NULL) && (!memcmp(arg, info_file->filename, strlen(info_file->filename)))) {
-    fs->databuf = info_file->contents;
-    size = info_file->size;
-  }
-
-  if ((fs->databuf != NULL) ||(ftp_file_exists(tcpc_cmd, arg, path, &size))) {
+  if (ftp_file_exists(tcpc_cmd, arg, path, &size)) {
     sprintf(reply, "150 Opening %s mode connection to send file.",
             fs->ascii_mode ? "ASCII":"BINARY");
     ftp_send_reply(tcpc_cmd, reply);
@@ -1839,31 +1798,7 @@ void vnet_server_c::ftp_get_filesize(tcp_conn_t *tcp_conn, const char *arg)
   char reply[20];
   unsigned size = 0;
 
-  if (!memcmp(arg, "initdone", 8)) {
-    if (!SIM->get_param_bool(BXPN_WASM_RESUMED)->get()) {
-      SIM->get_param_bool(BXPN_WASM_INITDONE)->set(1);
-    }
-    ftp_send_reply(tcp_conn, "550 File not found.");
-    return;
-  }
-  if (!memcmp(arg, "resumed", 7)) {
-    if (SIM->get_param_bool(BXPN_WASM_RESUMED)->get()) {
-      info_file = (ftp_info_file_t *)malloc(sizeof(ftp_info_file_t));
-      info_file->filename = "info";
-      info_file->contents = SIM->get_param_string(BXPN_WASM_TEST)->getptr();
-      info_file->size = strlen(info_file->contents);
-      sprintf(reply, "213 %d", 1);
-      ftp_send_reply(tcp_conn, reply);
-      return;
-    }
-    ftp_send_reply(tcp_conn, "550 File not found.");
-    return;
-  }
-  
-  if (((info_file != NULL) && (!memcmp(arg, info_file->filename, strlen(info_file->filename)))) || (ftp_file_exists(tcp_conn, arg, path, &size))) {
-    if ((info_file != NULL) && (!memcmp(arg, info_file->filename, strlen(info_file->filename)))) {
-      size = info_file->size;
-    }
+  if (ftp_file_exists(tcp_conn, arg, path, &size)) {
     sprintf(reply, "213 %d", size);
     ftp_send_reply(tcp_conn, reply);
   } else {

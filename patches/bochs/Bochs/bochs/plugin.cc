@@ -1063,6 +1063,8 @@ plugin_t bx_builtin_plugins[] = {
   BUILTIN_OPTPCI_PLUGIN_ENTRY(usb_xhci),
 #endif
   BUILTIN_OPTPCI_PLUGIN_ENTRY(mapdirVirtio9p),
+  BUILTIN_OPTPCI_PLUGIN_ENTRY(packVirtio9p),
+  BUILTIN_OPTPCI_PLUGIN_ENTRY(stdioVirtioConsole),
 #if BX_SUPPORT_SOUNDLOW
   BUILTIN_SND_PLUGIN_ENTRY(dummy),
   BUILTIN_SND_PLUGIN_ENTRY(file),

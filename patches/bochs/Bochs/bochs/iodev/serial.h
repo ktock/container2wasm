@@ -37,11 +37,13 @@
 #define SERIAL_ENABLE
 #endif
 
+#if !defined(WASI) && !defined(EMSCRIPTEN)
 #if defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__linux__) || defined(__GNU__) || defined(__GLIBC__) || defined(__APPLE__) || defined(__sun__) || defined(__CYGWIN__)
 #define SERIAL_ENABLE
-// extern "C" {
-// #include <termios.h>
-// };
+extern "C" {
+#include <termios.h>
+};
+#endif
 #endif
 
 #define BX_SERIAL_MAXDEV   4
@@ -125,7 +127,7 @@ typedef struct {
   serial_raw* raw;
 #endif
 #if defined(SERIAL_ENABLE) && !defined(BX_SER_WIN32)
-  // struct termios term_orig, term_new;
+  struct termios term_orig, term_new;
 #endif
 
   /*
