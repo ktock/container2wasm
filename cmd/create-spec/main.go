@@ -300,21 +300,21 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 }
 
 func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPath, runtimeConfigPath, imageRootfsPath string, noVmtouch bool) (*inittype.BootConfig, error) {
-	runcArgs := []string{"-b", runtimeBundlePath, "foo"}
+	runcArgs := []string{"run", "-b", runtimeBundlePath, "foo"}
 	if debug {
 		runcArgs = append([]string{"--debug"}, runcArgs...)
 	}
 	var cmdPreRun [][]string
 	if !noVmtouch {
 		cmdPreRun = [][]string{
-			[]string{"vmtouch", "-tv", "/sbin/runc", "/sbin/init", "/sbin/start-runc"},
+			[]string{"vmtouch", "-tv", "/sbin/runc", "/sbin/init"},
 		}
 	}
 	bootConfig := &inittype.BootConfig{
 		Debug:     debug,
 		DebugInit: debugInit,
 		Cmd: [][]string{
-			append([]string{"/sbin/start-runc"}, runcArgs...),
+			append([]string{"/sbin/runc"}, runcArgs...),
 		},
 		CmdPreRun: cmdPreRun,
 		Container: inittype.ContainerInfo{
