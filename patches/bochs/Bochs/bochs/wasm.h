@@ -349,7 +349,7 @@ public:
   static bool mem_write_handler(bx_phy_address addr, unsigned len, void *data, void *param);
   static bool mem_read_handler(bx_phy_address addr, unsigned len, void *data, void *param);
   
-  void init(char *plugin_name, Bit16u pci_device_id, Bit32u class_id, Bit32u device_features, const char *descr);
+  void init(char *plugin_name, Bit16u pci_device_id, Bit32u class_id, Bit16u device_id, Bit32u device_features, const char *descr);
   int memcpy_from_queue(void *buf, int queue_idx, int desc_idx, int offset, int count);
   int memcpy_to_queue(int queue_idx, int desc_idx, int offset, void *buf, int count);
   void virtio_consume_desc(int queue_idx, int desc_idx, int desc_len);
@@ -358,20 +358,6 @@ public:
 
   Bit32u config_space_size; /* in bytes, must be multiple of 4 */
   Bit8u config_space[MAX_CONFIG_SPACE_SIZE];
-
-private:
-  bool mem_read(bx_phy_address addr, unsigned len, void *data);
-  bool mem_write(bx_phy_address addr, unsigned len, void *data);
-  int pci_add_capability(Bit8u *buf, int size);
-  void virtio_add_pci_capability(int cfg_type, Bit8u bar, Bit32u offset, Bit32u len, Bit32u mult);
-  void virtio_config_write(Bit32u offset, Bit32u val, unsigned len);
-  Bit32u virtio_config_read(uint32_t offset, unsigned len);
-  int get_desc(VIRTIODesc *desc, int queue_idx, int desc_idx);
-  int get_desc_rw_size(int *pread_size, int *pwrite_size, int queue_idx, int desc_idx);
-  void queue_notify(int queue_idx);
-  void virtio_reset();
-  int memcpy_to_from_queue(Bit8u *buf, int queue_idx, int desc_idx, int offset, int count, bool to_queue);
-  int virtio_memcpy_to_ram(virtio_phys_addr_t addr,  Bit8u *buf, int count);
 
   struct {
     Bit8u devfunc;
@@ -385,6 +371,22 @@ private:
     Bit32u device_features;
     Bit32u next_cap_offset;
   } s;
+
+  int get_desc_rw_size(int *pread_size, int *pwrite_size, int queue_idx, int desc_idx);
+
+
+private:
+  bool mem_read(bx_phy_address addr, unsigned len, void *data);
+  bool mem_write(bx_phy_address addr, unsigned len, void *data);
+  int pci_add_capability(Bit8u *buf, int size);
+  void virtio_add_pci_capability(int cfg_type, Bit8u bar, Bit32u offset, Bit32u len, Bit32u mult);
+  void virtio_config_write(Bit32u offset, Bit32u val, unsigned len);
+  Bit32u virtio_config_read(uint32_t offset, unsigned len);
+  int get_desc(VIRTIODesc *desc, int queue_idx, int desc_idx);
+  void queue_notify(int queue_idx);
+  void virtio_reset();
+  int memcpy_to_from_queue(Bit8u *buf, int queue_idx, int desc_idx, int offset, int count, bool to_queue);
+  int virtio_memcpy_to_ram(virtio_phys_addr_t addr,  Bit8u *buf, int count);
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -476,7 +478,7 @@ typedef struct {
 
 class bx_virtio_9p_ctrl_c : public bx_virtio_ctrl_c {
 public:
-  bx_virtio_9p_ctrl_c(char *plugin_name, char *mount_tag, char *root_path);
+  bx_virtio_9p_ctrl_c(char *plugin_name, char *mount_tag, FSDevice *fs);
   virtual ~bx_virtio_9p_ctrl_c();
   virtual void init(void);
   virtual int device_recv(int queue_idx, int desc_idx, int read_size, int write_size);
@@ -492,9 +494,53 @@ public:
 
 private:
   char *mount_tag;
-  char *root_path;
   char *plugin_name;
   VIRTIO9PDevice p9fs;
+};
+
+FSVirtFile *get_vm_info();
+
+/////////////////////////////////////////////////////////////////////////
+// Virtio-console
+/////////////////////////////////////////////////////////////////////////
+#define BX_VIRTIO_CONSOLE_THIS this->
+
+typedef struct bx_virtio_console_ctrl_c bx_virtio_console_ctrl_c;
+
+typedef struct {
+    int stdin_fd;
+    int console_esc_state;
+    bool resize_pending;
+} STDIODevice;
+
+typedef struct {
+    void *opaque;
+    void (*write_data)(void *opaque, const uint8_t *buf, int len);
+    int (*read_data)(void *opaque, uint8_t *buf, int len);
+} CharacterDevice;
+
+typedef struct VIRTIOConsoleDevice {
+    CharacterDevice *cs;
+} VIRTIOConsoleDevice;
+
+class bx_virtio_console_ctrl_c : public bx_virtio_ctrl_c {
+public:
+  bx_virtio_console_ctrl_c(char *plugin_name, CharacterDevice *cs);
+  virtual ~bx_virtio_console_ctrl_c();
+  virtual void init(void);
+  virtual int device_recv(int queue_idx, int desc_idx, int read_size, int write_size);
+
+  bool virtio_console_can_write_data();
+  int virtio_console_get_write_len();
+  int virtio_console_write_data(const uint8_t *buf, int buf_len);
+  void virtio_console_resize_event(int width, int height);
+
+  static void rx_timer_handler(void *this_ptr);
+
+private:
+  char *plugin_name;
+  int timer_id;
+  VIRTIOConsoleDevice dev;
 };
 
 #endif

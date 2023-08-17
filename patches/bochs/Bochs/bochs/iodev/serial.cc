@@ -211,7 +211,7 @@ bx_serial_c::~bx_serial_c(void)
         case BX_SER_MODE_TERM:
 #if defined(SERIAL_ENABLE) && !defined(BX_SER_WIN32)
           if (s[i].tty_id >= 0) {
-            // tcsetattr(s[i].tty_id, TCSAFLUSH, &s[i].term_orig);
+            tcsetattr(s[i].tty_id, TCSAFLUSH, &s[i].term_orig);
           }
 #endif
           break;
@@ -400,41 +400,40 @@ bx_serial_c::init(void)
         }
       } else if (mode == BX_SER_MODE_TERM) {
 #if defined(SERIAL_ENABLE) && !defined(BX_SER_WIN32)
-        BX_SER_THIS s[i].io_mode = BX_SER_MODE_TERM;
-//         if (!BX_SER_THIS s[i].file->isempty()) {
-//           BX_SER_THIS s[i].tty_id = open(dev, O_RDWR|O_NONBLOCK,600);
-//           if (BX_SER_THIS s[i].tty_id < 0) {
-//             BX_PANIC(("open of com%d (%s) failed", i+1, dev));
-//           } else {
-//             BX_SER_THIS s[i].io_mode = BX_SER_MODE_TERM;
-//             BX_DEBUG(("com%d tty_id: %d", i+1, BX_SER_THIS s[i].tty_id));
-//             tcgetattr(BX_SER_THIS s[i].tty_id, &BX_SER_THIS s[i].term_orig);
-//             memcpy(&BX_SER_THIS s[i].term_orig, &BX_SER_THIS s[i].term_new, sizeof(struct termios));
-//             BX_SER_THIS s[i].term_new.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL|IXON);
-//             BX_SER_THIS s[i].term_new.c_lflag &= ~(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
-//             BX_SER_THIS s[i].term_new.c_cflag &= ~(CSIZE|PARENB);
-//             BX_SER_THIS s[i].term_new.c_cflag |= CS8;
-//             BX_SER_THIS s[i].term_new.c_oflag |= OPOST | ONLCR;  // Enable NL to CR-NL translation
-// #ifndef TRUE_CTLC
-//             // ctl-C will exit Bochs, or trap to the debugger
-//             BX_SER_THIS s[i].term_new.c_iflag &= ~IGNBRK;
-//             BX_SER_THIS s[i].term_new.c_iflag |= BRKINT;
-//             BX_SER_THIS s[i].term_new.c_lflag |= ISIG;
-// #else
-//             // ctl-C will be delivered to the serial port
-//             BX_SER_THIS s[i].term_new.c_iflag |= IGNBRK;
-//             BX_SER_THIS s[i].term_new.c_iflag &= ~BRKINT;
-// #endif    /* !def TRUE_CTLC */
-//             BX_SER_THIS s[i].term_new.c_iflag = 0;
-//             BX_SER_THIS s[i].term_new.c_oflag = 0;
-//             BX_SER_THIS s[i].term_new.c_cflag = CS8|CREAD|CLOCAL;
-//             BX_SER_THIS s[i].term_new.c_lflag = 0;
-//             BX_SER_THIS s[i].term_new.c_cc[VMIN] = 1;
-//             BX_SER_THIS s[i].term_new.c_cc[VTIME] = 0;
-//             //BX_SER_THIS s[i].term_new.c_iflag |= IXOFF;
-//             tcsetattr(BX_SER_THIS s[i].tty_id, TCSAFLUSH, &BX_SER_THIS s[i].term_new);
-//           }
-//         }
+        if (!BX_SER_THIS s[i].file->isempty()) {
+          BX_SER_THIS s[i].tty_id = open(dev, O_RDWR|O_NONBLOCK,600);
+          if (BX_SER_THIS s[i].tty_id < 0) {
+            BX_PANIC(("open of com%d (%s) failed", i+1, dev));
+          } else {
+            BX_SER_THIS s[i].io_mode = BX_SER_MODE_TERM;
+            BX_DEBUG(("com%d tty_id: %d", i+1, BX_SER_THIS s[i].tty_id));
+            tcgetattr(BX_SER_THIS s[i].tty_id, &BX_SER_THIS s[i].term_orig);
+            memcpy(&BX_SER_THIS s[i].term_orig, &BX_SER_THIS s[i].term_new, sizeof(struct termios));
+            BX_SER_THIS s[i].term_new.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL|IXON);
+            BX_SER_THIS s[i].term_new.c_lflag &= ~(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
+            BX_SER_THIS s[i].term_new.c_cflag &= ~(CSIZE|PARENB);
+            BX_SER_THIS s[i].term_new.c_cflag |= CS8;
+            BX_SER_THIS s[i].term_new.c_oflag |= OPOST | ONLCR;  // Enable NL to CR-NL translation
+#ifndef TRUE_CTLC
+            // ctl-C will exit Bochs, or trap to the debugger
+            BX_SER_THIS s[i].term_new.c_iflag &= ~IGNBRK;
+            BX_SER_THIS s[i].term_new.c_iflag |= BRKINT;
+            BX_SER_THIS s[i].term_new.c_lflag |= ISIG;
+#else
+            // ctl-C will be delivered to the serial port
+            BX_SER_THIS s[i].term_new.c_iflag |= IGNBRK;
+            BX_SER_THIS s[i].term_new.c_iflag &= ~BRKINT;
+#endif    /* !def TRUE_CTLC */
+            BX_SER_THIS s[i].term_new.c_iflag = 0;
+            BX_SER_THIS s[i].term_new.c_oflag = 0;
+            BX_SER_THIS s[i].term_new.c_cflag = CS8|CREAD|CLOCAL;
+            BX_SER_THIS s[i].term_new.c_lflag = 0;
+            BX_SER_THIS s[i].term_new.c_cc[VMIN] = 1;
+            BX_SER_THIS s[i].term_new.c_cc[VTIME] = 0;
+            //BX_SER_THIS s[i].term_new.c_iflag |= IXOFF;
+            tcsetattr(BX_SER_THIS s[i].tty_id, TCSAFLUSH, &BX_SER_THIS s[i].term_new);
+          }
+        }
 #else
         BX_PANIC(("serial terminal support not available"));
 #endif   /* def SERIAL_ENABLE */
@@ -1451,12 +1450,9 @@ void bx_serial_c::tx_timer(void)
     case BX_SER_MODE_TERM:
 #if defined(SERIAL_ENABLE)
       BX_DEBUG(("com%d: write: '%c'", port+1, BX_SER_THIS s[port].tsrbuffer));
-      fputc(BX_SER_THIS s[port].tsrbuffer, stdout);
-      fflush(stdout);
-      // if (BX_SER_THIS s[port].tty_id >= 0) {
-      //   write(BX_SER_THIS s[port].tty_id, (bx_ptr_t) & BX_SER_THIS s[port].tsrbuffer, 1);
-      //   fsync(BX_SER_THIS s[port].tty_id);
-      // }
+      if (BX_SER_THIS s[port].tty_id >= 0) {
+        write(BX_SER_THIS s[port].tty_id, (bx_ptr_t) & BX_SER_THIS s[port].tsrbuffer, 1);
+      }
 #endif
       break;
     case BX_SER_MODE_RAW:
@@ -1471,11 +1467,11 @@ void bx_serial_c::tx_timer(void)
       break;
     case BX_SER_MODE_SOCKET_CLIENT:
     case BX_SER_MODE_SOCKET_SERVER:
-      // if (BX_SER_THIS s[port].socket_id >= 0) {
-      //   BX_DEBUG(("com%d: write byte [0x%02x]", port+1, BX_SER_THIS s[port].tsrbuffer));
-      //   ::send(BX_SER_THIS s[port].socket_id,
-      //          (const char*) &BX_SER_THIS s[port].tsrbuffer, 1, 0);
-      // }
+      if (BX_SER_THIS s[port].socket_id >= 0) {
+        BX_DEBUG(("com%d: write byte [0x%02x]", port+1, BX_SER_THIS s[port].tsrbuffer));
+        ::send(BX_SER_THIS s[port].socket_id,
+               (const char*) &BX_SER_THIS s[port].tsrbuffer, 1, 0);
+      }
       break;
     case BX_SER_MODE_PIPE_CLIENT:
     case BX_SER_MODE_PIPE_SERVER:
@@ -1539,8 +1535,7 @@ void bx_serial_c::rx_timer(void)
 // leaving it commented out for the moment.
 
     FD_ZERO(&fds);
-    // if (BX_SER_THIS s[port].tty_id >= 0) FD_SET(BX_SER_THIS s[port].tty_id, &fds);
-    FD_SET(0, &fds);
+    if (BX_SER_THIS s[port].tty_id >= 0) FD_SET(BX_SER_THIS s[port].tty_id, &fds);
 #endif
   }
   if ((BX_SER_THIS s[port].line_status.rxdata_ready == 0) ||
@@ -1548,25 +1543,25 @@ void bx_serial_c::rx_timer(void)
     switch (BX_SER_THIS s[port].io_mode) {
       case BX_SER_MODE_SOCKET_CLIENT:
       case BX_SER_MODE_SOCKET_SERVER:
-// #if BX_HAVE_SELECT && defined(SERIAL_ENABLE)
-//         if (BX_SER_THIS s[port].line_status.rxdata_ready == 0) {
-//           tval.tv_sec  = 0;
-//           tval.tv_usec = 0;
-//           FD_ZERO(&fds);
-//           SOCKET socketid = BX_SER_THIS s[port].socket_id;
-//           if (socketid >= 0) {
-//             FD_SET(socketid, &fds);
-//             if (select((int)(socketid+1), &fds, NULL, NULL, &tval) == 1) {
-//               ssize_t bytes = (ssize_t)
-//               ::recv(socketid, (char*) &chbuf, 1, 0);
-//               if (bytes > 0) {
-//                 BX_DEBUG(("com%d: read byte [0x%02x]", port+1, chbuf));
-//                 data_ready = 1;
-//               }
-//             }
-//           }
-//         }
-// #endif
+#if BX_HAVE_SELECT && defined(SERIAL_ENABLE)
+        if (BX_SER_THIS s[port].line_status.rxdata_ready == 0) {
+          tval.tv_sec  = 0;
+          tval.tv_usec = 0;
+          FD_ZERO(&fds);
+          SOCKET socketid = BX_SER_THIS s[port].socket_id;
+          if (socketid >= 0) {
+            FD_SET(socketid, &fds);
+            if (select((int)(socketid+1), &fds, NULL, NULL, &tval) == 1) {
+              ssize_t bytes = (ssize_t)
+              ::recv(socketid, (char*) &chbuf, 1, 0);
+              if (bytes > 0) {
+                BX_DEBUG(("com%d: read byte [0x%02x]", port+1, chbuf));
+                data_ready = 1;
+              }
+            }
+          }
+        }
+#endif
         break;
       case BX_SER_MODE_RAW:
 #if USE_RAW_SERIAL
@@ -1612,14 +1607,10 @@ void bx_serial_c::rx_timer(void)
         break;
       case BX_SER_MODE_TERM:
 #if BX_HAVE_SELECT && defined(SERIAL_ENABLE)
-        if (!(SIM->get_param_bool(BXPN_WASM_NOSTDIN)->get())) {
-          if ((select(1, &fds, NULL, NULL, &tval) == 1) && (FD_ISSET(0, &fds))) {
-            (void) read(0, &chbuf, 1);
-            BX_DEBUG(("com%d: read: '%c'", port+1, chbuf));
-            data_ready = 1;
-          } else {
-            db_usec = db_usec * 100; // Frequent "select" speeds down the guest. (FIXME)
-          }
+        if ((BX_SER_THIS s[port].tty_id >= 0) && (select(BX_SER_THIS s[port].tty_id + 1, &fds, NULL, NULL, &tval) == 1)) {
+          (void) read(BX_SER_THIS s[port].tty_id, &chbuf, 1);
+          BX_DEBUG(("com%d: read: '%c'", port+1, chbuf));
+          data_ready = 1;
         }
 #endif
         break;

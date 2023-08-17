@@ -475,10 +475,7 @@ int init_wasi_info(int argc, char **argv, FSVirtFile *info)
 int bxmain(void)
 {
   if (vm_init_done) {
-    FSVirtFile *info = (FSVirtFile *)malloc(sizeof(FSVirtFile));
-    init_wasi_info(bx_startup_flags.argc, bx_startup_flags.argv, info);
-    SIM->get_param_string(BXPN_WASM_TEST)->set(info->contents);
-    SIM->get_param_bool(BXPN_WASM_RESUMED)->set(1);
+    init_wasi_info(bx_startup_flags.argc, bx_startup_flags.argv, get_vm_info());
     bx_param_enum_c *ci_param = SIM->get_param_enum(BXPN_SEL_CONFIG_INTERFACE);
     const char *ci_name = ci_param->get_selected();
     int status = SIM->configuration_interface(ci_name, CI_START);

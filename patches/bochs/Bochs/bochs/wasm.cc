@@ -61,14 +61,183 @@
 // Register mapdir device via viritio-9p
 /////////////////////////////////////////////////////////////////////////
 bx_virtio_9p_ctrl_c *wasi0;
+bx_virtio_9p_ctrl_c *wasi1;
+FSVirtFile *info;
+
+FSVirtFile *get_vm_info()
+{
+  return info;
+}
+
+FSDevice *fs_disk_init_with_info(const char *root_path, const char *info_path, FSVirtFile *info);
+FSDevice *fs_disk_init(const char *root_path);
 
 PLUGIN_ENTRY_FOR_MODULE(mapdirVirtio9p)
 {
   if (mode == PLUGIN_INIT) {
-    wasi0 = new bx_virtio_9p_ctrl_c(BX_PLUGIN_MAPDIR_VIRTIO_9P, "wasi0", "");
+    FSDevice *wasi0fs = fs_disk_init("");
+    wasi0 = new bx_virtio_9p_ctrl_c(BX_PLUGIN_MAPDIR_VIRTIO_9P, "wasi0", wasi0fs);
     BX_REGISTER_DEVICE_DEVMODEL(plugin, type, wasi0, BX_PLUGIN_MAPDIR_VIRTIO_9P);
   } else if (mode == PLUGIN_FINI) {
     delete wasi0;
+  } else if (mode == PLUGIN_PROBE) {
+    return (int)PLUGTYPE_STANDARD;
+  } else if (mode == PLUGIN_FLAGS) {
+    return PLUGFLAG_PCI;
+  }
+  return 0; // Success
+}
+
+PLUGIN_ENTRY_FOR_MODULE(packVirtio9p)
+{
+  if (mode == PLUGIN_INIT) {
+    info = (FSVirtFile *)malloc(sizeof(FSVirtFile));
+    FSDevice *wasi1fs = fs_disk_init_with_info("pack", "info", info);
+    wasi1 = new bx_virtio_9p_ctrl_c(BX_PLUGIN_PACK_VIRTIO_9P, "wasi1", wasi1fs);
+    BX_REGISTER_DEVICE_DEVMODEL(plugin, type, wasi1, BX_PLUGIN_PACK_VIRTIO_9P);
+  } else if (mode == PLUGIN_FINI) {
+    delete wasi1;
+  } else if (mode == PLUGIN_PROBE) {
+    return (int)PLUGTYPE_STANDARD;
+  } else if (mode == PLUGIN_FLAGS) {
+    return PLUGFLAG_PCI;
+  }
+  return 0; // Success
+}
+
+bool init_start = false;
+bool init_done = false;
+
+#define INIT_STR_POS_MAX 10
+int init_str_pos = 0;
+char init_str_buf[INIT_STR_POS_MAX];
+
+static void console_write(void *opaque, const uint8_t *buf, int len)
+{
+    int off = 0;
+    if (!init_start) {
+      for (int i = 0; i < len; i++) {
+        if (buf[i] == '=') {
+          init_str_buf[init_str_pos++] = buf[i];
+          off++;
+          if (init_str_pos == INIT_STR_POS_MAX) {
+            // NOTE: init string isn't printed
+            init_start = true;
+            SIM->get_param_bool(BXPN_WASM_INITDONE)->set(1);
+            break;
+          }
+        } else {
+          // flush all and reset counter
+          fwrite(init_str_buf, 1, init_str_pos, stdout);
+          init_str_pos = 0;
+        }
+      }
+    }
+    fwrite(buf+off, 1, len-off, stdout);
+    fflush(stdout);
+}
+
+static int console_read_stdin(void *opaque, uint8_t *buf, int len)
+{
+    STDIODevice *s = (STDIODevice *)opaque;
+    int ret, i, j;
+    uint8_t ch;
+
+    if (len <= 0)
+        return 0;
+
+    ret = read(s->stdin_fd, buf, len);
+    if (ret < 0)
+        return 0;
+    if (ret == 0) {
+        /* EOF */
+        exit(1);
+    }
+
+    j = 0;
+    for(i = 0; i < ret; i++) {
+        ch = buf[i];
+        if (s->console_esc_state) {
+            s->console_esc_state = 0;
+            switch(ch) {
+            case 'x':
+                printf("Terminated\n");
+                exit(0);
+            case 'h':
+                printf("\n"
+                       "C-a h   print this help\n"
+                       "C-a x   exit emulator\n"
+                       "C-a C-a send C-a\n"
+                       );
+                break;
+            case 1:
+                goto output_char;
+            default:
+                break;
+            }
+        } else {
+            if (ch == 1) {
+                s->console_esc_state = 1;
+            } else {
+            output_char:
+                buf[j++] = ch;
+            }
+        }
+    }
+    return j;
+}
+
+const char *init_done_str = "=\n";
+int init_done_str_pos = 0;
+
+static inline int min_int(int a, int b);
+
+static int console_read(void *opaque, uint8_t *buf, int len)
+{
+  if ((init_start) && (!init_done)) {
+    int l = min_int(strlen(init_done_str) - init_done_str_pos, len);
+    memcpy(buf, init_done_str + init_done_str_pos, l);
+    init_done_str_pos += l;
+    if (init_done_str_pos >= strlen(init_done_str)) {
+      init_done = true;
+    }
+    return l;
+  }
+  return console_read_stdin(opaque, buf, len);
+}
+
+void *mallocz(size_t size);
+
+CharacterDevice *console_init()
+{
+    CharacterDevice *dev;
+    STDIODevice *s;
+
+    dev = (CharacterDevice *)mallocz(sizeof(*dev));
+    s = (STDIODevice *)mallocz(sizeof(*s));
+    s->stdin_fd = 0;
+    /* Note: the glibc does not properly tests the return value of
+       write() in printf, so some messages on stdout may be lost */
+    fcntl(s->stdin_fd, F_SETFL, O_NONBLOCK);
+
+    s->resize_pending = true;
+    
+    dev->opaque = s;
+    dev->write_data = console_write;
+    dev->read_data = console_read;
+    return dev;
+}
+
+bx_virtio_console_ctrl_c *stdio_v;
+
+PLUGIN_ENTRY_FOR_MODULE(stdioVirtioConsole)
+{
+  if (mode == PLUGIN_INIT) {
+    CharacterDevice *cs = console_init();
+    stdio_v = new bx_virtio_console_ctrl_c(BX_PLUGIN_STDIO_VIRTIO_CONSOLE, cs);
+    BX_REGISTER_DEVICE_DEVMODEL(plugin, type, stdio_v, BX_PLUGIN_STDIO_VIRTIO_CONSOLE);
+  } else if (mode == PLUGIN_FINI) {
+    delete stdio_v;
   } else if (mode == PLUGIN_PROBE) {
     return (int)PLUGTYPE_STANDARD;
   } else if (mode == PLUGIN_FLAGS) {
@@ -1137,14 +1306,14 @@ void bx_virtio_ctrl_c::virtio_add_pci_capability(int cfg_type, Bit8u bar, Bit32u
     pci_add_capability(cap, cap_len);
 }
 
-void bx_virtio_ctrl_c::init(char *plugin_name, Bit16u pci_device_id, Bit32u class_id, Bit32u device_features, const char *descr)
+void bx_virtio_ctrl_c::init(char *plugin_name, Bit16u pci_device_id, Bit32u class_id, Bit16u device_id, Bit32u device_features, const char *descr)
 {
   BX_VIRTIO_THIS s.next_cap_offset = 0x40;
   BX_VIRTIO_THIS s.devfunc = 0;
   BX_VIRTIO_THIS s.device_features = device_features;
   DEV_register_pci_handlers(this, &BX_VIRTIO_THIS s.devfunc, plugin_name, descr);
 
-  init_pci_conf(0x1af4,pci_device_id,0x00,class_id,0,1);
+  init_pci_conf(0x1af4,pci_device_id,0x00,class_id << 8,0,1);
 
   Bit8u bar_num = 0;
   virtio_add_pci_capability(1, bar_num,
@@ -1156,6 +1325,8 @@ void bx_virtio_ctrl_c::init(char *plugin_name, Bit16u pci_device_id, Bit32u clas
   virtio_add_pci_capability(2, bar_num,
                             VIRTIO_PCI_NOTIFY_OFFSET, 0x1000, 0); /* notify */
   init_bar_mem(bar_num, 0x4000, mem_read_handler, mem_write_handler);
+  put_le16(BX_VIRTIO_THIS pci_conf + 0x2c, 0x1af4);
+  put_le16(BX_VIRTIO_THIS pci_conf + 0x2e, device_id);
   virtio_reset();
 }
 
@@ -1639,12 +1810,13 @@ bool bx_virtio_ctrl_c::mem_read(bx_phy_address addr, unsigned len, void *data)
 /////////////////////////////////////////////////////////////////////////
 // Virtio-9p
 /////////////////////////////////////////////////////////////////////////
-bx_virtio_9p_ctrl_c::bx_virtio_9p_ctrl_c(char *plugin_name, char *mount_tag, char *root_path)
+bx_virtio_9p_ctrl_c::bx_virtio_9p_ctrl_c(char *plugin_name, char *mount_tag, FSDevice *fs)
 {
   put("VIRTIO 9P");
   BX_VIRTIO_9P_THIS mount_tag = mount_tag;
-  BX_VIRTIO_9P_THIS root_path = root_path;
   BX_VIRTIO_9P_THIS plugin_name = plugin_name;
+  BX_VIRTIO_9P_THIS p9fs.fs = fs;
+  BX_VIRTIO_9P_THIS p9fs.msize = 8192;
 }
 
 bx_virtio_9p_ctrl_c::~bx_virtio_9p_ctrl_c()
@@ -1655,7 +1827,7 @@ bx_virtio_9p_ctrl_c::~bx_virtio_9p_ctrl_c()
 
 void bx_virtio_9p_ctrl_c::init()
 {
-  bx_virtio_ctrl_c::init(BX_VIRTIO_9P_THIS plugin_name, 0x1040 + 9, 0x2, 1<<0, "Virtio-9p"); // initialize as virtio-9p
+  bx_virtio_ctrl_c::init(BX_VIRTIO_9P_THIS plugin_name, 0x1040 + 9, 0x2, 9, 1<<0, "Virtio-9p"); // initialize as virtio-9p
 
   int mount_tag_len = strlen(BX_VIRTIO_9P_THIS mount_tag);
   BX_VIRTIO_9P_THIS config_space_size = 2 + (Bit32u) mount_tag_len;
@@ -1665,9 +1837,6 @@ void bx_virtio_9p_ctrl_c::init()
   cfg[1] = mount_tag_len >> 8;
   memcpy(cfg + 2, mount_tag, mount_tag_len);
 
-  FSDevice *fs = fs_disk_init(BX_VIRTIO_9P_THIS root_path);
-  BX_VIRTIO_9P_THIS p9fs.fs = fs;
-  BX_VIRTIO_9P_THIS p9fs.msize = 8192;
   init_list_head(&BX_VIRTIO_9P_THIS p9fs.fid_list);
 }
 
@@ -2543,6 +2712,178 @@ int bx_virtio_9p_ctrl_c::device_recv(int queue_idx, int desc_idx, int read_size,
  fid_not_found:
     err = -P9_EPROTO;
     goto error;
+}
+
+/////////////////////////////////////////////////////////////////////////
+// Virtio-console
+/////////////////////////////////////////////////////////////////////////
+bx_virtio_console_ctrl_c::bx_virtio_console_ctrl_c(char *plugin_name, CharacterDevice *cs)
+{
+  put("VIRTIO CONSOLE");
+  BX_VIRTIO_CONSOLE_THIS plugin_name = plugin_name;
+  BX_VIRTIO_CONSOLE_THIS dev.cs = cs;
+}
+
+bx_virtio_console_ctrl_c::~bx_virtio_console_ctrl_c()
+{
+  SIM->get_bochs_root()->remove("virtio_console");
+  // BX_DEBUG(("Exit"));
+}
+
+void bx_virtio_console_ctrl_c::init()
+{
+  bx_virtio_ctrl_c::init(BX_VIRTIO_CONSOLE_THIS plugin_name, 0x1003, 0x0780, 3, 1 << 0, "Virtio-console"); // initialize as virtio-console
+
+  BX_VIRTIO_CONSOLE_THIS config_space_size = 4;
+  QueueState *qs = &BX_VIRTIO_CONSOLE_THIS s.queue[0];
+  qs->manual_recv = true;
+
+  BX_VIRTIO_CONSOLE_THIS timer_id = DEV_register_timer(this, rx_timer_handler, 0, false, false, "virtio-console.rx");
+  bx_pc_system.activate_timer(BX_VIRTIO_CONSOLE_THIS timer_id, 100, false); /* not continuous */
+}
+
+int bx_virtio_console_ctrl_c::device_recv(int queue_idx, int desc_idx, int read_size, int write_size)
+{
+    CharacterDevice *cs = BX_VIRTIO_CONSOLE_THIS dev.cs;
+    uint8_t *buf;
+
+    if (queue_idx == 1) {
+        /* send to console */
+        buf = (uint8_t *)malloc(read_size);
+        memcpy_from_queue(buf, queue_idx, desc_idx, 0, read_size);
+        cs->write_data(cs->opaque, buf, read_size);
+        free(buf);
+        virtio_consume_desc(queue_idx, desc_idx, 0);
+    }
+    return 0;
+}
+
+bool bx_virtio_console_ctrl_c::virtio_console_can_write_data()
+{
+    QueueState *qs = &BX_VIRTIO_CONSOLE_THIS s.queue[0];
+    uint16_t avail_idx;
+
+    if (!qs->ready)
+        return false;
+    avail_idx = virtio_read16(qs->avail_addr + 2);
+    return qs->last_avail_idx != avail_idx;
+}
+
+int bx_virtio_console_ctrl_c::virtio_console_get_write_len()
+{
+    int queue_idx = 0;
+    QueueState *qs = &BX_VIRTIO_CONSOLE_THIS s.queue[queue_idx];
+    int desc_idx;
+    int read_size, write_size;
+    uint16_t avail_idx;
+
+    if (!qs->ready)
+        return 0;
+    avail_idx = virtio_read16(qs->avail_addr + 2);
+    if (qs->last_avail_idx == avail_idx)
+        return 0;
+    desc_idx = virtio_read16(qs->avail_addr + 4 + 
+                             (qs->last_avail_idx & (qs->num - 1)) * 2);
+    if (get_desc_rw_size(&read_size, &write_size, queue_idx, desc_idx))
+        return 0;
+    return write_size;
+}
+
+int bx_virtio_console_ctrl_c::virtio_console_write_data(const uint8_t *buf, int buf_len)
+{
+    int queue_idx = 0;
+    QueueState *qs = &BX_VIRTIO_CONSOLE_THIS s.queue[queue_idx];
+    int desc_idx;
+    uint16_t avail_idx;
+
+    if (!qs->ready)
+        return 0;
+    avail_idx = virtio_read16(qs->avail_addr + 2);
+    if (qs->last_avail_idx == avail_idx)
+        return 0;
+    desc_idx = virtio_read16(qs->avail_addr + 4 + 
+                             (qs->last_avail_idx & (qs->num - 1)) * 2);
+    memcpy_to_queue(queue_idx, desc_idx, 0, (void *)buf, buf_len);
+    virtio_consume_desc(queue_idx, desc_idx, buf_len);
+    qs->last_avail_idx++;
+    return buf_len;
+}
+
+/* send a resize event */
+void bx_virtio_console_ctrl_c::virtio_console_resize_event(int width, int height)
+{
+    /* indicate the console size */
+    put_le16(BX_VIRTIO_CONSOLE_THIS config_space + 0, width);
+    put_le16(BX_VIRTIO_CONSOLE_THIS config_space + 2, height);
+
+    BX_VIRTIO_CONSOLE_THIS s.int_status |= 2;
+    DEV_pci_set_irq(BX_VIRTIO_CONSOLE_THIS s.devfunc, BX_VIRTIO_CONSOLE_THIS pci_conf[0x3d], 1);
+}
+
+static void console_get_size(STDIODevice *s, int *pw, int *ph)
+{
+//  struct winsize ws;
+   int width, height;
+   /* default values */
+   width = 80;
+   height = 25;
+//  if (ioctl(s->stdin_fd, TIOCGWINSZ, &ws) == 0 &&
+//      ws.ws_col >= 4 && ws.ws_row >= 4) {
+//      width = ws.ws_col;
+//      height = ws.ws_row;
+//  }
+   *pw = width;
+   *ph = height;
+}
+
+void bx_virtio_console_ctrl_c::rx_timer_handler(void *this_ptr)
+{
+    bx_virtio_console_ctrl_c *class_ptr = (bx_virtio_console_ctrl_c *)this_ptr;
+    fd_set rfds, wfds, efds;
+    int fd_max, ret = 0, delay;
+    struct timeval tv;
+    int stdin_fd;
+    bool enable_stdin = !(SIM->get_param_bool(BXPN_WASM_NOSTDIN)->get());
+
+    FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
+    FD_ZERO(&efds);
+    fd_max = -1;
+    if (enable_stdin && class_ptr->virtio_console_can_write_data()) {
+      STDIODevice *s = (STDIODevice *)class_ptr->dev.cs->opaque;
+      stdin_fd = s->stdin_fd;
+      FD_SET(stdin_fd, &rfds);
+      fd_max = stdin_fd;
+
+      if (s->resize_pending) {
+        int width, height;
+        console_get_size(s, &width, &height);
+        class_ptr->virtio_console_resize_event(width, height);
+        s->resize_pending = false;
+      }
+    }
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    if (enable_stdin && init_done)
+        ret = select(fd_max + 1, &rfds, &wfds, NULL, &tv);
+
+    if ((ret > 0) || (init_start && !init_done)) {
+      if ((FD_ISSET(stdin_fd, &rfds) || (init_start && !init_done))) {
+        uint8_t buf[128];
+        int ret, len;
+        len = class_ptr->virtio_console_get_write_len();
+        len = min_int(len, sizeof(buf));
+        ret = class_ptr->dev.cs->read_data(class_ptr->dev.cs->opaque, buf, len);
+        if (ret > 0) {
+          class_ptr->virtio_console_write_data(buf, ret);
+        }
+      }
+    }
+    if (ret > 0) {
+      bx_pc_system.activate_timer(class_ptr->timer_id, 100, false); /* not continuous */
+    } else {
+      bx_pc_system.activate_timer(class_ptr->timer_id, 10000/*10ms*/, false); /* not continuous */
+    }
 }
 
 #endif /* BX_SUPPORT_PCI */

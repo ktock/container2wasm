@@ -187,12 +187,6 @@ typedef struct tftp_session {
   struct tftp_session *next;
 } tftp_session_t;
 
-typedef struct ftp_info_file  {
-  char *filename;
-  char *contents;
-  int size;
-} ftp_info_file_t;
-
 // VNET server
 
 #define VNET_MAX_CLIENTS 6
@@ -339,7 +333,6 @@ private:
   logfunctions *netdev;
   dhcp_cfg_t *dhcp;
   const char *tftp_root;
-  ftp_info_file *info_file;
 
   struct {
     bool init;

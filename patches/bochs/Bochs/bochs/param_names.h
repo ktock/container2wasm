@@ -185,9 +185,7 @@
 #define BXPN_MENU_RUNTIME_USB            "menu.runtime.usb"
 #define BXPN_MENU_RUNTIME_MISC           "menu.runtime.misc"
 
-#define BXPN_WASM_TEST           "wasm.test"
 #define BXPN_WASM_INITDONE           "wasm.initdone"
-#define BXPN_WASM_RESUMED           "wasm.resumed"
 #define BXPN_WASM_NOSTDIN           "wasm.no-stdin"
 
 #endif

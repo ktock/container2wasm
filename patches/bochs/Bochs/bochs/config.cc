@@ -1766,9 +1766,7 @@ void bx_init_options()
   misc->set_options(misc->SHOW_PARENT | misc->SHOW_GROUP_NAME);
 
   bx_list_c *wasm = new bx_list_c(root_param, "wasm", "WASM VM Configuration");
-  new bx_param_string_c(wasm, "test", "", "", "test", 1024); // TODO: make limit configurable
   new bx_param_bool_c(wasm, "initdone", "", "", 0);
-  new bx_param_bool_c(wasm, "resumed", "", "", 0);
   new bx_param_bool_c(wasm, "no-stdin", "", "", 0);
 }
 
