@@ -273,6 +273,8 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) ru
 			args = append(args, strings.ReplaceAll(string(o[prev:]), "\\ ", " "))
 		case "e":
 			entrypoint = []string{o}
+		case "env":
+			s.Process.Env = append(s.Process.Env, o)
 		default:
 			log.Printf("unsupported prefix: %q", inst)
 		}
