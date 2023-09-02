@@ -58,6 +58,8 @@
 #include "wasi.h"
 #endif
 
+extern char **environ;
+
 #ifdef ON_BROWSER
 #include <emscripten.h>
 #endif
@@ -918,6 +920,34 @@ int write_args(FSVirtFile *f, int argc, char **argv, int optind, int pos1)
   return pos - pos1;
 }
 
+int write_env(FSVirtFile *f, int pos1, const char *env)
+{
+  int p, pos = pos1;
+
+  p = write_info(f, pos, 5, "env: ");
+  if (p < 0) {
+    return -1;
+  }
+  pos += p;
+  for (int j = 0; j < strlen(env); j++) {
+    if (env[j] == '\n') {
+      p = write_info(f, pos, 2, "\\\n");
+      if (p != 2) {
+        return -1;
+      }
+      pos += p;
+      continue;
+    }
+    if (putchar_info(f, pos++, env[j]) != 1) {
+      return -1;
+    }
+  }
+  if (putchar_info(f, pos++, '\n') != 1) {
+    return -1;
+  }
+  return pos - pos1;
+}
+
 int main(int argc, char **argv)
 {
 #ifdef WASI
@@ -983,6 +1013,19 @@ int main(int argc, char **argv)
       }
       pos += p;
     }
+
+#ifdef WASI
+    // TODO: support emscripten; it seems some default variables are passed, which shouldn't be inherited by the container.
+    // https://github.com/emscripten-core/emscripten/blob/0566a76b500bd2bbd535e108f657fce1db7f6f75/src/library_wasi.js#L62
+    for (char **env = environ; *env; ++env) {
+      int p = write_env(info, pos, *env);
+      if (p < 0) {
+        printf("failed to prepare env info\n");
+        exit(1);
+      }
+      pos += p;
+    }
+#endif
 
     info->len = pos;
 #ifdef WASI

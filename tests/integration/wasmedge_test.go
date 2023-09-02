@@ -55,5 +55,20 @@ func TestWasmedge(t *testing.T) {
 			Args: utils.StringFlags("--no-stdin", "cat", "/map/dir/hi"),
 			Want: utils.WantString("teststring"),
 		},
+		{
+			Name:    "wasmedge-env",
+			Runtime: "wasmedge",
+			Inputs: []utils.Input{
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
+			},
+			ImageName: "test2.wasm",
+			Prepare: func(t *testing.T, workdir string) {
+				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
+			},
+			RuntimeOpts: utils.StringFlags("--env=AAA=hello", "--env=BBB=world"),
+			Args:        utils.StringFlags("--no-stdin", "/bin/sh", "-c", "echo -n $AAA $BBB"), // NOTE: stdin unsupported on wasmedge as of now
+			Want:        utils.WantString("hello world"),
+		},
 	}...)
 }

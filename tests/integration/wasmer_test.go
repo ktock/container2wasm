@@ -47,5 +47,16 @@ func TestWasmer(t *testing.T) {
 			Args: utils.StringFlags("--", "--no-stdin", "cat", "/mapped/dir/test/hi"),
 			Want: utils.WantString("teststring"),
 		},
+		{
+			Name:    "wasmer-env",
+			Runtime: "wasmer",
+			Inputs: []utils.Input{
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
+			},
+			RuntimeOpts: utils.StringFlags("--env=AAA=hello", "--env=BBB=world"),
+			Args:        utils.StringFlags("--", "--no-stdin", "/bin/sh", "-c", "echo -n $AAA $BBB"), // wasmer requires "--" before flags we pass to the wasm program.
+			Want:        utils.WantString("hello world"),
+		},
 	}...)
 }

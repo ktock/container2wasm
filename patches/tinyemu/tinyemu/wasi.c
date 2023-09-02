@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include <wasi/libc.h>
+#include <wasi/libc-environ.h>
 
 #include "cutils.h"
 #include "fs.h"
@@ -160,6 +161,7 @@ extern void __wasi_vfs_rt_init(void);
 
 int init_wasi()
 {
+    __wasilibc_ensure_environ();
     __wasi_vfs_rt_init(); // initialize wasi-vfs
     if (populate_preopens() != 0) { // register mapdir and wasi-vfs dir to wasi-libc and our list
       fprintf(stderr, "failed to populate preopens");

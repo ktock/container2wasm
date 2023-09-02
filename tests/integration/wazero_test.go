@@ -106,5 +106,16 @@ func TestWazero(t *testing.T) {
 				[2]string{"echo -n hello > /mapdir/from-guest/testhello\n", ""},
 			),
 		},
+		{
+			Name:    "wazero-env",
+			Runtime: "wazero-test",
+			Inputs: []utils.Input{
+				{Image: "alpine:3.17", Architecture: utils.X86_64},
+				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
+			},
+			RuntimeOpts: utils.StringFlags("--env=AAA=hello", "--env=BBB=world"),
+			Args:        utils.StringFlags("/bin/sh", "-c", "echo -n $AAA $BBB"),
+			Want:        utils.WantString("hello world"),
+		},
 	}...)
 }
