@@ -188,7 +188,7 @@ COPY --link --from=vmtouch-riscv64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-riscv64-dev /out/tini /rootfs/sbin/tini
 RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
 RUN touch /rootfs/etc/resolv.conf /rootfs/etc/hosts
-RUN mkdir /out/ && mkisofs -l -J -r -o /out/rootfs.bin /rootfs/
+RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
 # RUN isoinfo -i /out/rootfs.bin -l
 
 FROM ubuntu:22.04 AS tinyemu-config-dev
@@ -393,7 +393,7 @@ COPY --link --from=vmtouch-amd64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-amd64-dev /out/tini /rootfs/sbin/tini
 RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
 RUN touch /rootfs/etc/resolv.conf /rootfs/etc/hosts
-RUN mkdir /out/ && mkisofs -l -J -r -o /out/rootfs.bin /rootfs/
+RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
 # RUN isoinfo -i /out/rootfs.bin -l
 
 FROM ubuntu:22.04 AS bochs-config-dev
