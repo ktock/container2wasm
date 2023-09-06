@@ -16,7 +16,7 @@ jobs:
     - uses: actions/setup-go@v4
       with:
         go-version: '1.21.x'
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build all
       run: |
         make
@@ -31,7 +31,7 @@ jobs:
       matrix:
         target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: x86_64
       env:
         GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=x86_64.*
@@ -47,7 +47,7 @@ jobs:
   #   runs-on: ubuntu-22.04
   #   name: Benchmark
   #   steps:
-  #   - uses: actions/checkout@v3
+  #   - uses: actions/checkout@v4
   #   - name: Benchmark
   #     run: |
   #       make benchmark
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-22.04
     name: Linter
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3
       with:
@@ -70,7 +70,7 @@ jobs:
     - uses: actions/setup-go@v4
       with:
         go-version: 1.21.x
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 100
     - name: "Check DCO sign"
