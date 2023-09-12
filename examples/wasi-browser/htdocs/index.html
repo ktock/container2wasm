@@ -27,8 +27,8 @@
 
       var nwStack;
       var netParam = getNetParam();
+      var workerImage = location.origin + "/out.wasm";
       if (netParam) {
-          var workerImage = location.origin + "/out.wasm";
           if (netParam.mode == 'delegate') {
               nwStack = delegate(worker, workerImage, netParam.param);
           } else if (netParam.mode == 'browser') {
@@ -36,7 +36,7 @@
           }
       }
       if (!nwStack) {
-          worker.postMessage({type: "init", imagename: workerImageName});
+          worker.postMessage({type: "init", imagename: workerImage});
       }
       new TtyServer(slave).start(worker, nwStack);
 
