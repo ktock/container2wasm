@@ -17,6 +17,8 @@ We provide a wrapper command [`c2w-net`](../../../cmd/c2w-net/) for container-on
 `c2w-net` exposes an WebSocket port and it forwards all packets received from that WebSocket.
 The container running on browser can connect to that WebSocket and pass all packets there and let `c2w-net` forward them on the host.
 
+> NOTE: This feature is tested only on Linux.
+
 ## Getting `c2w` and `c2w-net`
 
 `c2w` and `c2w-net` are available on the [release page](https://github.com/ktock/container2wasm/releases).

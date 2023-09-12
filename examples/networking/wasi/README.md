@@ -12,9 +12,11 @@ WASI runtime binds the socket on a TCP port (e.g. using wasmtime's `--tcplisten`
 The WASM image converted from the container has `--net` flag that enables this networking feature.
 `--net=qemu` is the only supported mode which sends packets to `gvisor-tap-vsock` (wrapped by `c2w-net`) using [QEMU's forwarding protocol](https://github.com/containers/gvisor-tap-vsock#run-with-qemu-linux-or-macos).
 
-> NOTE: By default, the WASM image tries to establish connection with `c2w-net` via WASI's fd=3.
+> NOTE1: By default, the WASM image tries to establish connection with `c2w-net` via WASI's fd=3.
 > However WASI runtimes might use larger fd when directory sharing is enabled.
 > In that case, `--net=qemu=listenfd=<num>` flag can be used for configuring the WASM image to use the correct socket fd.
+
+> NOTE2: This feature is tested only on Linux.
 
 ## Example
 
