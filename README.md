@@ -102,11 +102,11 @@ $ c2w debian-curl /tmp/out-js2/htdocs/out.wasm
 ```
 
 This example serves the image on `localhost:8080` using apache http server.
-The following also builds the [network stack runnable on browser](./extras/c2w-net-proxy/) and puts it to the document root.
+The following also puts the [network stack runnable on browser](./extras/c2w-net-proxy/) to the document root.
 
 ```
 $ cp -R ./examples/wasi-browser/* /tmp/out-js2/ && chmod 755 /tmp/out-js2/htdocs
-$ PREFIX=/tmp/out-js2/htdocs/ make c2w-net-proxy.wasm
+$ wget -O /tmp/out-js2/htdocs/c2w-net-proxy.wasm https://github.com/ktock/container2wasm/releases/download/v0.5.0/c2w-net-proxy.wasm
 $ docker run --rm -p 8080:80 \
          -v "/tmp/out-js2/htdocs:/usr/local/apache2/htdocs/:ro" \
          -v "/tmp/out-js2/xterm-pty.conf:/usr/local/apache2/conf/extra/xterm-pty.conf:ro" \
