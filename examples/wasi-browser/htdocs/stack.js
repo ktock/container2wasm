@@ -99,7 +99,15 @@ function connect(name, shared, conn, certbuf) {
                     streamData[0] = 1; // ready for reading
                 } else {
                     if ((req_.timeout != undefined) && (req_.timeout > 0)) {
-                        setTimeout(() => {
+                        if (this.timeoutHandler) {
+                            clearTimeout(this.timeoutHandler);
+                            this.timeoutHandler = null;
+                        }
+                        this.timeoutHandler = setTimeout(() => {
+                            if (this.timeoutHandler) {
+                                clearTimeout(this.timeoutHandler);
+                                this.timeoutHandler = null;
+                            }
                             if (recvbuf.buf.byteLength > 0) {
                                 streamData[0] = 1; // ready for reading
                             } else {
