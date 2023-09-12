@@ -371,9 +371,7 @@ public:
     Bit32u device_features;
     Bit32u next_cap_offset;
   } s;
-
   int get_desc_rw_size(int *pread_size, int *pwrite_size, int queue_idx, int desc_idx);
-
 
 private:
   bool mem_read(bx_phy_address addr, unsigned len, void *data);
@@ -534,7 +532,6 @@ public:
   int virtio_console_get_write_len();
   int virtio_console_write_data(const uint8_t *buf, int buf_len);
   void virtio_console_resize_event(int width, int height);
-
   static void rx_timer_handler(void *this_ptr);
 
 private:
@@ -542,5 +539,61 @@ private:
   int timer_id;
   VIRTIOConsoleDevice dev;
 };
+
+/////////////////////////////////////////////////////////////////////////
+// Virtio-net
+/////////////////////////////////////////////////////////////////////////
+#define BX_VIRTIO_NET_THIS this->
+
+typedef struct bx_virtio_net_ctrl_c bx_virtio_net_ctrl_c;
+
+struct EthernetDevice {
+    uint8_t mac_addr[6]; /* mac address of the interface */
+    void (*write_packet)(EthernetDevice *net,
+                         const uint8_t *buf, int len);
+    void *opaque;
+    bx_virtio_net_ctrl_c *virtio_device;
+    void (*select_fill)(EthernetDevice *net, int *pfd_max,
+                        fd_set *rfds, fd_set *wfds, fd_set *efds,
+                        int *pdelay);
+    void (*select_poll)(EthernetDevice *net, 
+                        fd_set *rfds, fd_set *wfds, fd_set *efds,
+                        int select_ret);
+    int (*watch)(EthernetDevice *net);
+};
+
+typedef struct VIRTIONetDevice {
+    int header_size;
+} VIRTIONetDevice;
+
+typedef struct {
+    uint8_t flags;
+    uint8_t gso_type;
+    uint16_t hdr_len;
+    uint16_t gso_size;
+    uint16_t csum_start;
+    uint16_t csum_offset;
+    uint16_t num_buffers;
+} VIRTIONetHeader;
+
+class bx_virtio_net_ctrl_c : public bx_virtio_ctrl_c {
+public:
+  bx_virtio_net_ctrl_c(char *plugin_name, EthernetDevice *es);
+  virtual ~bx_virtio_net_ctrl_c();
+  virtual void init(void);
+  virtual int device_recv(int queue_idx, int desc_idx, int read_size, int write_size);
+
+  bool virtio_net_can_write_packet(EthernetDevice *es);
+  void virtio_net_write_packet(EthernetDevice *es, const uint8_t *buf, int buf_len);
+  static void rx_timer_handler(void *this_ptr);
+
+private:
+  char *plugin_name;
+  int timer_id;
+  VIRTIONetDevice net;
+  EthernetDevice *es;
+};
+
+int start_qemu_net(char *flag);
 
 #endif

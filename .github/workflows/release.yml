@@ -19,17 +19,25 @@ jobs:
     env:
       OUTPUT_DIR: ${{ github.workspace }}/builds
     steps:
+    - uses: actions/setup-go@v4
+      with:
+        go-version: 1.21.x
     - uses: actions/checkout@v4
-    - name: Build
+    - name: Build binaries
       run: |
         PREFIX=${OUTPUT_DIR} make artifacts
+    - name: Build wasm image
+      run: |
+        PREFIX=${OUTPUT_DIR} make c2w-net-proxy.wasm
+    - name: sha256sum
+      run: |
         ( cd ${OUTPUT_DIR}; sha256sum * ) > "${GITHUB_WORKSPACE}/SHA256SUMS"
         mv "${GITHUB_WORKSPACE}/SHA256SUMS" "${OUTPUT_DIR}/SHA256SUMS"
     - name: Create Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        SHA256SUM_OF_SHA256SUM=$(sha256sum ${OUTPUT_DIR}/SHA256SUMS | cut -d ' ' -f 1)
+        SHA256SUM_OF_SHA256SUMS=$(sha256sum ${OUTPUT_DIR}/SHA256SUMS | cut -d ' ' -f 1)
         RELEASE_TAG="${GITHUB_REF##*/}"
         MINIMAL_TAR=$(ls -1 ${OUTPUT_DIR} | grep container2wasm-v | head -1)
         MINIMAL_TAR_LIST=$(tar --list -vvf ${OUTPUT_DIR}/${MINIMAL_TAR})
@@ -50,9 +58,13 @@ jobs:
 
         </details>
 
+        ## About \`c2w-net-proxy.wasm\`
+
+        Please refer to [the document about networking for container on browser](https://github.com/ktock/container2wasm/tree/${RELEASE_TAG}/examples/networking/fetch/) for details and usage.
+
         ---
         
-        The sha256sum of SHA256SUM is \`${SHA256SUM_OF_SHA256SUM}\`
+        The sha256sum of SHA256SUMS is \`${SHA256SUM_OF_SHA256SUMS}\`
 
         EOF
         ASSET_FLAGS=()

@@ -64,6 +64,14 @@ extern char **environ;
 #include <emscripten.h>
 #endif
 
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#ifndef ON_BROWSER
+// not defined in wasi-libc
+#define PF_INET 1
+#define PF_INET6 2
+#endif
+
 #ifndef _WIN32
 
 typedef struct {
@@ -583,6 +591,276 @@ static EthernetDevice *slirp_open(void)
 
 #endif /* CONFIG_SLIRP */
 
+/*******************************************************/
+/* qemu */
+
+typedef struct {
+    int fd;
+    BOOL select_filled;
+    char *raw_flag;
+
+    int tmpfd;
+    BOOL enabled;
+    int next_watch;
+    int retrynum;
+
+    uint32_t sizebuf;
+    int sizeoff;
+    int pktsize;
+    int pktoff;
+    uint8_t *pktbuf;
+} QemuSocketState;
+
+static void qemu_write_packet(EthernetDevice *net,
+                               const uint8_t *buf, int len)
+{
+    QemuSocketState *s = net->opaque;
+    uint32_t size = htonl(len);
+    int ret;
+
+    if (s->fd < 0) {
+      return;
+    }
+
+    ret = send(s->fd, &size, 4, 0); // TODO: check error
+    if (ret < 0) {
+      close(s->fd);
+      s->fd = -1;
+      return;
+    }
+    ret = send(s->fd, buf, len, 0); // TODO: check error
+    if (ret < 0) {
+      close(s->fd);
+      s->fd = -1;
+      return;
+    }
+}
+
+static int try_get_fd(QemuSocketState *s);
+
+static int qemu_watch1(EthernetDevice *net)
+{
+  QemuSocketState *s = (QemuSocketState *)net->opaque;
+
+  if (!s->enabled)
+    return -1;
+
+  if (s->fd >= 0)
+    return 0;
+
+  s->next_watch--;
+  if (s->next_watch > 0)
+    return -1;
+  if (try_get_fd(s) >= 0)
+    return 0;
+  if (s->next_watch <= 0) {
+    s->next_watch = 500; // TODO: make it configable or should be time interval
+  }
+  
+  return -1;
+}
+
+static void qemu_select_fill1(EthernetDevice *net, int *pfd_max,
+                               fd_set *rfds, fd_set *wfds, fd_set *efds,
+                               int *pdelay)
+{
+   QemuSocketState *s = net->opaque;
+   int fd = s->fd;
+
+   if (s->fd < 0) {
+     return;
+   }
+
+   s->select_filled = net->device_can_write_packet(net);
+   if (s->select_filled) {
+       FD_SET(fd, rfds);
+       *pfd_max = max_int(*pfd_max, fd);
+   }
+}
+
+static void qemu_select_poll1(EthernetDevice *net, 
+                               fd_set *rfds, fd_set *wfds, fd_set *efds,
+                               int select_ret)
+{
+   QemuSocketState *s = net->opaque;
+   int fd = s->fd;
+   uint32_t size = 0;
+   int ret;
+   
+   if (s->fd < 0) {
+     return;
+   }
+
+   if (select_ret <= 0)
+       return;
+
+   if (s->select_filled && FD_ISSET(fd, rfds)) {
+     if (s->pktsize <= 0) {
+       while (s->sizeoff < 4) {
+         ret = recv(fd, &s->sizebuf + s->sizeoff, 4 - s->sizeoff, 0);
+         if (ret <= 0) {
+           if (errno == EAGAIN)
+             return; // try later
+           close(s->fd);
+           s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
+           return;
+         }
+         s->sizeoff += ret;
+       }
+       s->pktsize = ntohl(s->sizebuf);
+       s->sizeoff = 0;
+       s->sizebuf = 0;
+     }
+
+     if (s->pktsize > 0) {
+       size = s->pktsize;
+       if (s->pktbuf == NULL) {
+         s->pktoff = 0;
+         s->pktbuf = (uint8_t *)mallocz(size); // TODO: make limit
+       }
+       while (s->pktoff < size) {
+         ret = recv(fd, s->pktbuf + s->pktoff, size - s->pktoff, 0);
+         if (ret <= 0) {
+           if (errno == EAGAIN)
+             return; // try later
+           close(s->fd);
+           s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
+           return;
+         }
+         s->pktoff += ret;
+       }
+       net->device_write_packet(net, s->pktbuf, size);
+       free(s->pktbuf);
+       s->pktbuf = NULL;
+       s->pktsize = 0;
+       s->pktoff = 0;
+     }
+   }
+}
+
+static EthernetDevice *qemu_net_init()
+{
+    EthernetDevice *net;
+    QemuSocketState *s;
+
+    net = mallocz(sizeof(*net));
+    net->mac_addr[0] = 0x02;
+    net->mac_addr[1] = 0x00;
+    net->mac_addr[2] = 0x00;
+    net->mac_addr[3] = 0x00;
+    net->mac_addr[4] = 0x00;
+    net->mac_addr[5] = 0x01;
+    net->opaque = NULL;
+    s = mallocz(sizeof(*s));
+    s->fd = -1;
+    s->tmpfd = -1;
+    s->enabled = FALSE;
+    s->next_watch = 0;
+    net->opaque = s;
+    net->write_packet = qemu_write_packet;
+    net->select_fill = qemu_select_fill1;
+    net->select_poll = qemu_select_poll1;
+    net->watch = qemu_watch1;
+
+    return net;
+}
+
+static void reset_qemu_socket_state(QemuSocketState *s)
+{
+    s->sizebuf = 0;
+    s->sizeoff = 0;
+    s->pktsize = 0;
+    s->pktoff = 0;
+    if (s->pktbuf != NULL) {
+      free(s->pktbuf);
+    }
+    s->pktbuf = NULL;
+}
+
+#ifdef ON_BROWSER
+static int try_get_fd(QemuSocketState *s)
+{
+    int sock= s->fd;
+    fd_set wfds;
+    struct sockaddr_in qemuAddr;
+
+    if (s->tmpfd < 0) {
+      if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+        printf("failed to prepare socket: %s\n", strerror(errno));
+        return -1;
+      }
+      // connect to the network stack
+      memset(&qemuAddr, 0, sizeof(qemuAddr));
+      qemuAddr.sin_family = AF_INET;
+      int cret = connect(sock, (struct sockaddr *) &qemuAddr, sizeof(qemuAddr));
+      BOOL connected = FALSE;
+      if ((cret == 0) || (errno == EISCONN)) {
+        /* printf("socket connected\n"); */
+        s->fd = sock;
+        s->tmpfd = -1;
+        reset_qemu_socket_state(s);
+        return 0;
+      } else if (errno != EINPROGRESS) {
+        printf("failed to connect: %s\n", strerror(errno));
+        s->fd = -1;
+        s->tmpfd = -1;
+        return -1;
+      }
+      s->retrynum = 0;
+      s->tmpfd = sock;
+    }
+
+    /* printf("waiting for connection...\n"); */
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    FD_ZERO(&wfds);
+    FD_SET(s->tmpfd, &wfds);
+    int sret = select(s->tmpfd + 1, NULL, &wfds, NULL, &tv);
+    if (sret > 0) {
+      s->fd = s->tmpfd;
+      s->tmpfd = -1;
+      reset_qemu_socket_state(s);
+      return 0;
+    } else if (sret < 0) {
+      s->fd = -1;
+      s->tmpfd = -1;
+    } // else, still wait for the connection.
+    /* printf("select result: %d\n", sret); */
+
+    s->retrynum++;
+    if (s->retrynum > 5) { // TODO: make max retry number configurable
+      close(s->tmpfd);
+      s->tmpfd = -1; // too many errors. retry connection.
+    }
+
+    return -1;
+}
+#elif defined(WASI)
+static int try_get_fd(QemuSocketState *s)
+{
+  int sock = 3;
+  if ((s->raw_flag != NULL) && (!strncmp(s->raw_flag, "qemu=", 5))) {
+    // TODO: allow specifying more options
+    if (!strncmp(s->raw_flag + 5, "listenfd=", 9)) {
+      sock = atoi(s->raw_flag + 5 + 9);
+    }
+  }
+  int sock_a = 0;
+  // wait for connection
+  /* printf("accept trying...(sockfd=%d)\n", sock); */
+  sock_a = accept4(sock, NULL, NULL, SOCK_NONBLOCK);
+  if (sock_a > 0) {
+    /* printf("accepted fd=%d\n", sock_a); */
+    s->fd = sock_a;
+    reset_qemu_socket_state(s);
+    return 0;
+  }
+  /* printf("failed to accept socket: %s\n", strerror(errno)); */
+  return -1;
+}
+#endif
+
 #define MAX_EXEC_CYCLE 500000
 #define MAX_SLEEP_TIME 10 /* in ms */
 
@@ -617,12 +895,16 @@ void virt_machine_run(VirtMachine *m, int enable_stdin)
         }
     }
 #endif
+    fd_set n_rfds, n_wfds, n_efds;
+    FD_ZERO(&n_rfds);
+    FD_ZERO(&n_wfds);
+    FD_ZERO(&n_efds);
+    int n_fd_max = -1;
     if (m->net) {
-      // TODO: do this when enable net
-      // m->net->select_fill(m->net, &fd_max, &rfds, &wfds, &efds, &delay);
+      m->net->select_fill(m->net, &n_fd_max, &n_rfds, &n_wfds, &n_efds, &delay);
     }
 #ifdef CONFIG_FS_NET
-    fs_net_set_fdset(&fd_max, &rfds, &wfds, &efds, &delay);
+    fs_net_set_fdset(&n_fd_max, &n_rfds, &n_wfds, &n_efds, &delay);
 #endif
     tv.tv_sec = delay / 1000;
     tv.tv_usec = (delay % 1000) * 1000;
@@ -634,8 +916,12 @@ void virt_machine_run(VirtMachine *m, int enable_stdin)
     if (enable_stdin && init_done)
         ret = select(fd_max + 1, &rfds, &wfds, NULL, &tv);
     if (m->net) {
-      // TODO: do this when enable net
-      // m->net->select_poll(m->net, &rfds, &wfds, &efds, ret);
+      if (n_fd_max >= 0) {
+        // TODO: select should be unified (stdin + net), but it doesn't work as of now.
+        int n_ret = select(n_fd_max + 1, &n_rfds, &n_wfds, NULL, &tv);
+        m->net->select_poll(m->net, &n_rfds, &n_wfds, &n_efds, n_ret);
+      }
+      m->net->watch(m->net);
     }
     if ((ret > 0) || (init_start && !init_done)) {
 #ifndef _WIN32
@@ -646,7 +932,7 @@ void virt_machine_run(VirtMachine *m, int enable_stdin)
             len = min_int(len, sizeof(buf));
             ret = m->console->read_data(m->console->opaque, buf, len);
             if (ret > 0) {
-                virtio_console_write_data(m->console_dev, buf, ret);
+              virtio_console_write_data(m->console_dev, buf, ret);
             }
         }
 #endif
@@ -668,6 +954,8 @@ static struct option options[] = {
     { "help", no_argument, NULL, 'h' },
     { "no-stdin", no_argument },
     { "entrypoint", required_argument },
+    { "net", required_argument },
+    { "mac", required_argument },
 // The following flags are unsupported as of now:
 //    { "ctrlc", no_argument },
 //    { "rw", no_argument },
@@ -686,6 +974,8 @@ void help(void)
           "OPTIONS:\n"
           "  -entrypoint <command>: entrypoint command. (default: entrypoint specified in the image config)\n"
           "  -no-stdin            : disable stdin. (default: false)\n"
+          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"qemu\")\n"
+          "  -mac <mac address>   : use a custom mac address for the VM\n"
           "\n"
           "This tool is based on:\n"
           "temu version 2019-12-21, Copyright (c) 2016-2018 Fabrice Bellard\n"
@@ -713,7 +1003,7 @@ int initialized = FALSE;
 VirtMachine *s;
 VirtMachineParams p_s, *p = &p_s;
 
-void init_func()
+void init_func_args(char *net)
 {
     const char *path, *cmdline = NULL;
     int i = 0;
@@ -794,6 +1084,7 @@ void init_func()
     }
     p->fs_count++;
 
+    // networking
     for(i = 0; i < p->eth_count; i++) {
 #ifdef CONFIG_SLIRP
         if (!strcmp(p->tab_eth[i].driver, "user")) {
@@ -815,6 +1106,15 @@ void init_func()
                     p->tab_eth[i].driver);
             exit(1);
         }
+    }
+
+    if ((p->eth_count == 0) && (net != NULL)) {
+      if (!strncmp(net, "qemu", 4)) {
+           p->tab_eth[0].net = qemu_net_init();
+           p->eth_count++;
+           if (!p->tab_eth[0].net)
+               exit(1);
+      }
     }
     
 #ifdef CONFIG_SDL
@@ -851,6 +1151,11 @@ void init_func()
       fclose(bf->f);
     }
     initialized = TRUE;
+}
+
+void init_func()
+{
+    init_func_args("qemu");
 }
 
 #ifdef WASI
@@ -948,6 +1253,46 @@ int write_env(FSVirtFile *f, int pos1, const char *env)
   return pos - pos1;
 }
 
+int write_net(FSVirtFile *f, int pos1, const char *mac)
+{
+  int p, pos = pos1;
+
+  p = write_info(f, pos, 3, "n: ");
+  if (p < 0) {
+    return -1;
+  }
+  pos += p;
+  for (int j = 0; j < strlen(mac); j++) {
+    if (putchar_info(f, pos++, mac[j]) != 1) {
+      return -1;
+    }
+  }
+  if (putchar_info(f, pos++, '\n') != 1) {
+    return -1;
+  }
+  return pos - pos1;
+}
+
+int write_time(FSVirtFile *f, int pos1, const char *timestr)
+{
+  int p, pos = pos1;
+
+  p = write_info(f, pos, 3, "t: ");
+  if (p < 0) {
+    return -1;
+  }
+  pos += p;
+  for (int j = 0; j < strlen(timestr); j++) {
+    if (putchar_info(f, pos++, timestr[j]) != 1) {
+      return -1;
+    }
+  }
+  if (putchar_info(f, pos++, '\n') != 1) {
+    return -1;
+  }
+  return pos - pos1;
+}
+
 int main(int argc, char **argv)
 {
 #ifdef WASI
@@ -957,14 +1302,8 @@ int main(int argc, char **argv)
     }
 #endif
 
-    if (!initialized) {
-      init_func();
-    } else {
-      virt_machine_resume(s);
-    }
-
     /* const char *cmdline, *build_preload_file; */
-    char *entrypoint = NULL;
+    char *entrypoint = NULL, *net = NULL, *mac = NULL;
     int pos, c, option_index, i, enable_stdin = TRUE;
     for(;;) {
         c = getopt_long_only(argc, argv, "+h", options, &option_index);
@@ -982,6 +1321,12 @@ int main(int argc, char **argv)
             case 2: /* entrypoint */
                 entrypoint = optarg;
                 break;
+            case 3: /* net */
+                net = optarg;
+                break;
+            case 4: /* mac */
+                mac = optarg;
+                break;
             default:
                 fprintf(stderr, "unknown option index: %d\n", option_index);
                 exit(1);
@@ -993,6 +1338,12 @@ int main(int argc, char **argv)
         default:
             exit(1);
         }
+    }
+
+    if (!initialized) {
+      init_func_args(net);
+    } else {
+      virt_machine_resume(s);
     }
 
     pos = info->len;
@@ -1026,6 +1377,34 @@ int main(int argc, char **argv)
       pos += p;
     }
 #endif
+
+    if (net) {
+      if (!strncmp(net, "qemu", 4)) {
+        EthernetDevice *netd;
+        for(i = 0; i < p->eth_count; i++) {
+          netd = p->tab_eth[i].net;
+          if (netd != NULL) {
+            ((QemuSocketState *)netd->opaque)->enabled = TRUE;
+            ((QemuSocketState *)netd->opaque)->raw_flag = net;
+          }
+        }
+      }
+      int p = write_net(info, pos, mac);
+      if (p < 0) {
+        printf("failed to prepare net info\n");
+        exit(1);
+      }
+      pos += p;
+    }
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", (unsigned)time(NULL));
+    int ps = write_time(info, pos, buf);
+    if (ps < 0) {
+      printf("failed to prepare time info\n");
+      exit(1);
+    }
+    pos += ps;
 
     info->len = pos;
 #ifdef WASI

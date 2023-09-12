@@ -23,6 +23,8 @@ type MountInfo struct {
 	Data     string     `json:"data,omitempty"`
 	Dir      []DirInfo  `json:"dir,omitempty"`
 	File     []FileInfo `json:"file,omitempty"`
+	PostDir  []DirInfo  `json:"post_dir,omitempty"`
+	PostFile []FileInfo `json:"post_file,omitempty"`
 	Cmd      []string   `json:"cmd,omitempty"`
 	Async    bool       `json:"async,omitempty"`
 	Optional bool       `json:"optional,omitempty"`

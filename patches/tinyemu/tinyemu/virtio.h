@@ -95,6 +95,7 @@ struct EthernetDevice {
                         fd_set *rfds, fd_set *wfds, fd_set *efds,
                         int select_ret);
 #endif
+    int (*watch)(EthernetDevice *net);
     /* the following is set by the device */
     void *device_opaque;
     BOOL (*device_can_write_packet)(EthernetDevice *net);

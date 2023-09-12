@@ -16,6 +16,16 @@ COPY ./tests/wazero /wazero
 WORKDIR /wazero
 RUN go build -o /out/wazero-test main.go
 
+FROM golang:1.21 AS httphello-dev
+COPY ./tests/httphello /httphello
+WORKDIR /httphello
+RUN go build -o /out/httphello main.go
+
+FROM golang:1.21 AS c2w-net-proxy-test-dev
+COPY ./tests/c2w-net-proxy-test /c2w-net-proxy-test
+WORKDIR /c2w-net-proxy-test
+RUN go build -o /out/c2w-net-proxy-test main.go
+
 FROM ubuntu:22.04
 ARG BUILDX_VERSION
 ARG DOCKER_VERSION
@@ -58,6 +68,8 @@ RUN wget https://github.com/WasmEdge/WasmEdge/releases/download/${WASMEDGE_VERSI
 
 # install wazero
 COPY --from=wazero-test-dev /out/wazero-test /usr/local/bin/
+COPY --from=httphello-dev /out/httphello /usr/local/bin/
+COPY --from=c2w-net-proxy-test-dev /out/c2w-net-proxy-test /usr/local/bin/
 
 # install golang
 RUN wget https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz
@@ -69,6 +81,8 @@ ENV PATH=$PATH:/usr/local/go/bin
 COPY . /test/
 WORKDIR /test/
 RUN go build -o /usr/local/bin/ ./cmd/c2w
+RUN go build -o /usr/local/bin/ ./cmd/c2w-net
+RUN cd extras/c2w-net-proxy/ ; GOOS=wasip1 GOARCH=wasm go build -o /opt/c2w-net-proxy.wasm .
 
 ENTRYPOINT ["dockerd-entrypoint.sh"]
 CMD []
