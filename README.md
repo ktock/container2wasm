@@ -251,6 +251,7 @@ The following shows the techniqual details:
 - Guest OS: Linux runs on the emulated CPU. [runc](https://github.com/opencontainers/runc) starts the container. Non-x86 and non-RISC-V containers runs with additional emulation by QEMU installed via [`tonistiigi/binfmt`](https://github.com/tonistiigi/binfmt).
 - Directory Mapping: WASI filesystem API makes host directories visible to the emulator. Emulators mount them to the guest linux via virtio-9p.
 - Packaging: [wasi-vfs](https://github.com/kateinoigakukun/wasi-vfs) (for WASI and on-browser) and emscripten (for on-browser) are used for packaging the dependencies. The kernel is pre-booted during the build using [wizer](https://github.com/bytecodealliance/wizer/) to minimize the startup latency (for WASI only as of now).
+- Networking: Browser's Fetch API or WebSocket is used for on-browser image. `sock_*` API is used for WASI. [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) can be used as the networking stack. (docs: [`./examples/networking/`](./examples/networking/))
 - Security: The converted container runs in the sandboxed WASM (WASI) VM with the limited access to the host system.
 
 ## WASI Runtimes Integration Status
@@ -307,7 +308,7 @@ Re-compilation (and possibe re-implementation) of the application is needed.
 
 ## Additional Documents
 
-- [`./examples/`](./examples): Examples (python, php, on-browser, etc.)
+- [`./examples/`](./examples): Examples (python, php, on-browser, networking, etc.)
 
 ## Acknowledgement
 
