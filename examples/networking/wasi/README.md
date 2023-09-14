@@ -2,8 +2,8 @@
 
 Networking on WASI runtimes is possible by relying on the network stack running on the host (outside of the WASI runtime).
 
-We use [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) as the user-space network stack running on the host.
-We provide a wrapper command [`c2w-net`](../../../cmd/c2w-net/) for container-on-WASI-runtime use-case.
+We provide [`c2w-net`](../../../cmd/c2w-net/) as the user-space network stack running on the host.
+This is implemented based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock).
 
 The WASM image converted from the container can be configured to expose packets sent from the container via WASI's socket (`sock_*` API).
 WASI runtime binds the socket on a TCP port (e.g. using wasmtime's `--tcplisten` flag and wazero's [`WithTCPListener`](https://github.com/tetratelabs/wazero/blob/405a5c9daca906cc8f52ee13e16511f44ae79557/experimental/sock/sock.go#L31) option).

@@ -11,8 +11,8 @@ This example relies on the network stack running on the host (outside of the bro
 - pros: Container can access to anywhere accesible from the network stack daemon running on the host.
 - cons:  The network stack daemon needs to run on the machine and forward packets received over WebSocket.
 
-We use [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) as the user-space network stack running on the host.
-We provide a wrapper command [`c2w-net`](../../../cmd/c2w-net/) for container-on-wasm use-case.
+We provide [`c2w-net`](../../../cmd/c2w-net/) as the user-space network stack running on the host.
+This is implemented based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock).
 
 `c2w-net` exposes an WebSocket port and it forwards all packets received from that WebSocket.
 The container running on browser can connect to that WebSocket and pass all packets there and let `c2w-net` forward them on the host.
