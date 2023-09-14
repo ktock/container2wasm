@@ -115,7 +115,7 @@ $ docker run --rm -p 8080:80 \
 
 You can run the container on browser with several types of configurations:
 
-- `localhost:8080/?net=browser`: Container with networking. [Network stack `c2w-net`](./extras/c2w-net-proxy/) implemented based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) runs on browser and forwards HTTP/HTTPS packets using the browser's Fetch API. The set of accesible sites is restricted by the browser configuration (e.g. CORS restriction). See also [`./examples/networking/fetch`](./examples/networking/fetch/) for detalis.
+- `localhost:8080/?net=browser`: Container with networking. [Network stack `c2w-net-proxy`](./extras/c2w-net-proxy/) implemented based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) runs on browser and forwards HTTP/HTTPS packets using the browser's Fetch API. The set of accesible sites is restricted by the browser configuration (e.g. CORS restriction). See also [`./examples/networking/fetch`](./examples/networking/fetch/) for detalis.
 - `localhost:8080/?net=delegate=ws://localhost:8888`: Container with networking. You need to run [user-space network stack `c2w-net`](./cmd/c2w-net/) implemented based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) on the host (outside of browser). It forwards all packets received from the browser over WebSocket. See also [`./examples/networking/websocket`](./examples/networking/websocket/) for detalis and configuration. (tested only on Linux)
 - `localhost:8080`: Container without networking.
 
