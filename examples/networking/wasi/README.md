@@ -10,11 +10,11 @@ WASI runtime binds the socket on a TCP port (e.g. using wasmtime's `--tcplisten`
 `c2w-net` running on the host connects to that port and forwards packets sent to/from the container.
 
 The WASM image converted from the container has `--net` flag that enables this networking feature.
-`--net=qemu` is the only supported mode which sends packets to `gvisor-tap-vsock` (wrapped by `c2w-net`) using [QEMU's forwarding protocol](https://github.com/containers/gvisor-tap-vsock#run-with-qemu-linux-or-macos).
+`--net=socket` is the only supported mode which sends packets to `gvisor-tap-vsock` (wrapped by `c2w-net`) using [QEMU's forwarding protocol](https://github.com/containers/gvisor-tap-vsock#run-with-qemu-linux-or-macos).
 
 > NOTE1: By default, the WASM image tries to establish connection with `c2w-net` via WASI's fd=3.
 > However WASI runtimes might use larger fd when directory sharing is enabled.
-> In that case, `--net=qemu=listenfd=<num>` flag can be used for configuring the WASM image to use the correct socket fd.
+> In that case, `--net=socket=listenfd=<num>` flag can be used for configuring the WASM image to use the correct socket fd.
 
 > NOTE2: This feature is tested only on Linux.
 
@@ -45,7 +45,7 @@ $ c2w alpine:3.18 /tmp/out/out.wasm
 Then launch it on wasmtime with enabling networking.
 
 ```console
-$ c2w-net --invoke /tmp/out/out.wasm --net=qemu sh
+$ c2w-net --invoke /tmp/out/out.wasm --net=socket sh
 connecting to NW...
 INFO[0001] new connection from 127.0.0.1:1234 to 127.0.0.1:50470 
 / # apk update && apk add --no-progress figlet
@@ -77,7 +77,7 @@ The following example launches httpd server listening on `localhost:8000`.
 
 ```
 $ c2w httpd /tmp/out/httpd.wasm
-$ c2w-net --invoke -p localhost:8000:80 /tmp/out/httpd.wasm --net=qemu
+$ c2w-net --invoke -p localhost:8000:80 /tmp/out/httpd.wasm --net=socket
 ```
 
 > It might takes several seconds to the server becoming up-and-running.
@@ -107,7 +107,7 @@ Then, it can run on wazero with networking support:
 
 ```
 $ ( cd ./tests/wazero && go build -o ../../out/wazero-test . )
-$ ./out/wazero-test -net /tmp/out/out.wasm --net=qemu sh
+$ ./out/wazero-test -net /tmp/out/out.wasm --net=socket sh
 connecting to NW...
 INFO[0001] new connection from 127.0.0.1:1234 to 127.0.0.1:53666 
 / # apk update && apk add --no-progress figlet
@@ -137,7 +137,7 @@ The following example launches httpd server listening on `localhost:8000`.
 
 ```
 $ c2w httpd /tmp/out/httpd.wasm
-$ ./out/wazero-test -net -p localhost:8000:80 /tmp/out/httpd.wasm --net=qemu
+$ ./out/wazero-test -net -p localhost:8000:80 /tmp/out/httpd.wasm --net=socket
 ```
 
 > It might takes several seconds to the server becoming up-and-running.

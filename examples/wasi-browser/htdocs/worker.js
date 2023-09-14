@@ -18,7 +18,7 @@ onmessage = (msg) => {
         resp['arrayBuffer']().then((wasm) => {
             if (netParam) {
                 if (netParam.mode == 'delegate') {
-                    args = ['arg0', '--net=qemu', '--mac', genmac()];
+                    args = ['arg0', '--net=socket', '--mac', genmac()];
                 } else if (netParam.mode == 'browser') {
                     recvCert().then((cert) => {
                         var certDir = getCertDir(cert);
@@ -31,7 +31,7 @@ onmessage = (msg) => {
                             undefined, // 5: accepted socket fd (multi-connection is unsupported)
                             // 6...: used by wasi shim
                         ];
-                        args = ['arg0', '--net=qemu=listenfd=4', '--mac', genmac()];
+                        args = ['arg0', '--net=socket=listenfd=4', '--mac', genmac()];
                         env = [
                             "SSL_CERT_FILE=/.wasmenv/proxy.crt",
                             "https_proxy=http://192.168.127.253:80",

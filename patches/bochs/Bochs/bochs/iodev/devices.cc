@@ -363,7 +363,7 @@ void bx_devices_c::init(BX_MEM_C *newmem)
   PLUG_load_plugin(mapdirVirtio9p, PLUGTYPE_STANDARD);
   PLUG_load_plugin(packVirtio9p, PLUGTYPE_STANDARD);
   PLUG_load_plugin(stdioVirtioConsole, PLUGTYPE_STANDARD);
-  PLUG_load_plugin(qemuVirtioNet, PLUGTYPE_STANDARD);
+  PLUG_load_plugin(socketVirtioNet, PLUGTYPE_STANDARD);
 #endif
   bx_init_plugins();
 
