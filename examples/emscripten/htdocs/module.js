@@ -2,7 +2,7 @@ var Module = {};
 
 var netParam = getNetParam();
 if (netParam && (netParam.mode == 'delegate')) {
-    Module['arguments'] = ['--net', 'qemu', '--mac', genmac()];
+    Module['arguments'] = ['--net', 'socket', '--mac', genmac()];
     Module['websocket'] = {
         'url': netParam.param
     };

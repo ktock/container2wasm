@@ -127,6 +127,9 @@ function connect(name, shared, conn, certbuf) {
                 var reqObj = JSON.parse(new TextDecoder().decode(req_.req));
                 reqObj.mode = "cors";
                 reqObj.credentials = "omit";
+                if (reqObj.headers && reqObj.headers["User-Agent"] != "") {
+                    delete reqObj.headers["User-Agent"]; // Browser will add its own value.
+                }
                 var reqID = getID();
                 if (reqID < 0) {
                     console.log(name + ":" + "failed to get id");

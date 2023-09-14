@@ -592,7 +592,7 @@ static EthernetDevice *slirp_open(void)
 #endif /* CONFIG_SLIRP */
 
 /*******************************************************/
-/* qemu */
+/* socket */
 
 typedef struct {
     int fd;
@@ -609,12 +609,12 @@ typedef struct {
     int pktsize;
     int pktoff;
     uint8_t *pktbuf;
-} QemuSocketState;
+} SocketState;
 
-static void qemu_write_packet(EthernetDevice *net,
+static void socket_write_packet(EthernetDevice *net,
                                const uint8_t *buf, int len)
 {
-    QemuSocketState *s = net->opaque;
+    SocketState *s = net->opaque;
     uint32_t size = htonl(len);
     int ret;
 
@@ -636,11 +636,11 @@ static void qemu_write_packet(EthernetDevice *net,
     }
 }
 
-static int try_get_fd(QemuSocketState *s);
+static int try_get_fd(SocketState *s);
 
-static int qemu_watch1(EthernetDevice *net)
+static int socket_watch1(EthernetDevice *net)
 {
-  QemuSocketState *s = (QemuSocketState *)net->opaque;
+  SocketState *s = (SocketState *)net->opaque;
 
   if (!s->enabled)
     return -1;
@@ -660,11 +660,11 @@ static int qemu_watch1(EthernetDevice *net)
   return -1;
 }
 
-static void qemu_select_fill1(EthernetDevice *net, int *pfd_max,
+static void socket_select_fill1(EthernetDevice *net, int *pfd_max,
                                fd_set *rfds, fd_set *wfds, fd_set *efds,
                                int *pdelay)
 {
-   QemuSocketState *s = net->opaque;
+   SocketState *s = net->opaque;
    int fd = s->fd;
 
    if (s->fd < 0) {
@@ -678,11 +678,11 @@ static void qemu_select_fill1(EthernetDevice *net, int *pfd_max,
    }
 }
 
-static void qemu_select_poll1(EthernetDevice *net, 
+static void socket_select_poll1(EthernetDevice *net, 
                                fd_set *rfds, fd_set *wfds, fd_set *efds,
                                int select_ret)
 {
-   QemuSocketState *s = net->opaque;
+   SocketState *s = net->opaque;
    int fd = s->fd;
    uint32_t size = 0;
    int ret;
@@ -738,10 +738,10 @@ static void qemu_select_poll1(EthernetDevice *net,
    }
 }
 
-static EthernetDevice *qemu_net_init()
+static EthernetDevice *socket_net_init()
 {
     EthernetDevice *net;
-    QemuSocketState *s;
+    SocketState *s;
 
     net = mallocz(sizeof(*net));
     net->mac_addr[0] = 0x02;
@@ -757,15 +757,15 @@ static EthernetDevice *qemu_net_init()
     s->enabled = FALSE;
     s->next_watch = 0;
     net->opaque = s;
-    net->write_packet = qemu_write_packet;
-    net->select_fill = qemu_select_fill1;
-    net->select_poll = qemu_select_poll1;
-    net->watch = qemu_watch1;
+    net->write_packet = socket_write_packet;
+    net->select_fill = socket_select_fill1;
+    net->select_poll = socket_select_poll1;
+    net->watch = socket_watch1;
 
     return net;
 }
 
-static void reset_qemu_socket_state(QemuSocketState *s)
+static void reset_socket_socket_state(SocketState *s)
 {
     s->sizebuf = 0;
     s->sizeoff = 0;
@@ -778,11 +778,11 @@ static void reset_qemu_socket_state(QemuSocketState *s)
 }
 
 #ifdef ON_BROWSER
-static int try_get_fd(QemuSocketState *s)
+static int try_get_fd(SocketState *s)
 {
     int sock= s->fd;
     fd_set wfds;
-    struct sockaddr_in qemuAddr;
+    struct sockaddr_in socketAddr;
 
     if (s->tmpfd < 0) {
       if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -790,15 +790,15 @@ static int try_get_fd(QemuSocketState *s)
         return -1;
       }
       // connect to the network stack
-      memset(&qemuAddr, 0, sizeof(qemuAddr));
-      qemuAddr.sin_family = AF_INET;
-      int cret = connect(sock, (struct sockaddr *) &qemuAddr, sizeof(qemuAddr));
+      memset(&socketAddr, 0, sizeof(socketAddr));
+      socketAddr.sin_family = AF_INET;
+      int cret = connect(sock, (struct sockaddr *) &socketAddr, sizeof(socketAddr));
       BOOL connected = FALSE;
       if ((cret == 0) || (errno == EISCONN)) {
         /* printf("socket connected\n"); */
         s->fd = sock;
         s->tmpfd = -1;
-        reset_qemu_socket_state(s);
+        reset_socket_socket_state(s);
         return 0;
       } else if (errno != EINPROGRESS) {
         printf("failed to connect: %s\n", strerror(errno));
@@ -820,7 +820,7 @@ static int try_get_fd(QemuSocketState *s)
     if (sret > 0) {
       s->fd = s->tmpfd;
       s->tmpfd = -1;
-      reset_qemu_socket_state(s);
+      reset_socket_socket_state(s);
       return 0;
     } else if (sret < 0) {
       s->fd = -1;
@@ -837,13 +837,13 @@ static int try_get_fd(QemuSocketState *s)
     return -1;
 }
 #elif defined(WASI)
-static int try_get_fd(QemuSocketState *s)
+static int try_get_fd(SocketState *s)
 {
   int sock = 3;
-  if ((s->raw_flag != NULL) && (!strncmp(s->raw_flag, "qemu=", 5))) {
+  if ((s->raw_flag != NULL) && (!strncmp(s->raw_flag, "socket=", 7))) {
     // TODO: allow specifying more options
-    if (!strncmp(s->raw_flag + 5, "listenfd=", 9)) {
-      sock = atoi(s->raw_flag + 5 + 9);
+    if (!strncmp(s->raw_flag + 7, "listenfd=", 9)) {
+      sock = atoi(s->raw_flag + 7 + 9);
     }
   }
   int sock_a = 0;
@@ -853,7 +853,7 @@ static int try_get_fd(QemuSocketState *s)
   if (sock_a > 0) {
     /* printf("accepted fd=%d\n", sock_a); */
     s->fd = sock_a;
-    reset_qemu_socket_state(s);
+    reset_socket_socket_state(s);
     return 0;
   }
   /* printf("failed to accept socket: %s\n", strerror(errno)); */
@@ -974,7 +974,7 @@ void help(void)
           "OPTIONS:\n"
           "  -entrypoint <command>: entrypoint command. (default: entrypoint specified in the image config)\n"
           "  -no-stdin            : disable stdin. (default: false)\n"
-          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"qemu\")\n"
+          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"socket\")\n"
           "  -mac <mac address>   : use a custom mac address for the VM\n"
           "\n"
           "This tool is based on:\n"
@@ -1109,8 +1109,8 @@ void init_func_args(char *net)
     }
 
     if ((p->eth_count == 0) && (net != NULL)) {
-      if (!strncmp(net, "qemu", 4)) {
-           p->tab_eth[0].net = qemu_net_init();
+      if (!strncmp(net, "socket", 6)) {
+           p->tab_eth[0].net = socket_net_init();
            p->eth_count++;
            if (!p->tab_eth[0].net)
                exit(1);
@@ -1155,7 +1155,7 @@ void init_func_args(char *net)
 
 void init_func()
 {
-    init_func_args("qemu");
+    init_func_args("socket");
 }
 
 #ifdef WASI
@@ -1379,13 +1379,13 @@ int main(int argc, char **argv)
 #endif
 
     if (net) {
-      if (!strncmp(net, "qemu", 4)) {
+      if (!strncmp(net, "socket", 6)) {
         EthernetDevice *netd;
         for(i = 0; i < p->eth_count; i++) {
           netd = p->tab_eth[i].net;
           if (netd != NULL) {
-            ((QemuSocketState *)netd->opaque)->enabled = TRUE;
-            ((QemuSocketState *)netd->opaque)->raw_flag = net;
+            ((SocketState *)netd->opaque)->enabled = TRUE;
+            ((SocketState *)netd->opaque)->raw_flag = net;
           }
         }
       }

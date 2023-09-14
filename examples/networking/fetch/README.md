@@ -10,12 +10,11 @@ The entire network stack runs on browser so this doesn't require network stack d
 - pros: No need to run network stack daemon on the host. Networking is done based on browser's Fetch API and follows its security configuration including CORS restriction.
 - cons: Container can send only HTTP/HTTPS packets to outside of the browser. And the set of accesible HTTP/HTTPS sites is limited by the browser's security rule (e.g. limited CORS).
 
-We use [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock) as the network stack written in Go.
-We provide the customized version of the network stack [`c2w-net-proxy`](../../../extras/c2w-net-proxy) for container-on-browser use-case.
-This is compiled to WASM and runs on browser.
+We provide the network stack [`c2w-net-proxy`](../../../extras/c2w-net-proxy) implemented based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock).
+This is written in Go and compiled to WASM and runs on browser.
 
 `c2w-net-proxy` running on browser provides HTTP/HTTPS proxy for the container.
-The proxy runs on top of `gvisor-tap-vsock`'s network stack that receives packets from the container.
+The proxy runs on top of the network stack (running on browser) that receives packets from the container.
 `c2w-net-proxy` forwards HTTP/HTTPS requests using the browser's `fetch` API so it doesn't require network stack daemon outside of the browser.
 
 For HTTPS, the proxy teminates the TLS connection from the contaienr with its own certificate and re-encrypt the connection to the destination using the Fetch API.
@@ -32,6 +31,7 @@ In [our example JS wrapper for container](../../wasi-browser/), by defualt, the 
 
 - Containers can't access to sites not allowing CORS access. For example, we haven't find apt mirrors accessible from browser so the container can't run `apt-get`. We expect more sites will allow CORS access.
 - The proxy supports only HTTP/HTTPS and the implementation isn't mature. So it's possible that some HTTP networking fails on some cases. We'll work on support for more features.
+- The proxy and containers don't have the control over [Forbidden headers](https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name) that are controlled by the browser.
 - Only chrome is our tested browser. The set of accesible sites might be different among browsers and the configurations.
 - WASI-on-browser container is only supported. Emscripten support is the future work.
 

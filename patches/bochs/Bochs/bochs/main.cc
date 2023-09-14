@@ -468,7 +468,7 @@ void print_usage(void)
           "OPTIONS:\n"
           "  -entrypoint <command>: entrypoint command. (default: entrypoint specified in the image config)\n"
           "  -no-stdin            : disable stdin. (default: false)\n"
-          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"qemu\")\n"
+          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"socket\")\n"
           "  -mac <mac address>   : use a custom mac address for the VM\n"
           "\n"
           "This tool is based on Bochs emulator.\n"
@@ -568,9 +568,9 @@ int init_vm(int argc, char **argv, FSVirtFile *info)
 #endif
 
     if (net != NULL) {
-      if (!strncmp(net, "qemu", 4)) {
-        if (start_qemu_net(net) != 0) {
-          fprintf(stderr, "failed to wait qemu net");
+      if (!strncmp(net, "socket", 6)) {
+        if (start_socket_net(net) != 0) {
+          fprintf(stderr, "failed to wait socket net");
           exit(1);
         }
       }

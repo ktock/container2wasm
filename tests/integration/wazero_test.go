@@ -160,7 +160,7 @@ RUN apt-get update && apt-get install -y wget
 				}
 			},
 			Args: func(t *testing.T, workdir string) []string {
-				return []string{"--net=qemu=listenfd=4", "sh", "-c", fmt.Sprintf("for I in $(seq 1 50) ; do if wget -O - http://127.0.0.1:%d/ 2>/dev/null ; then break ; fi ; sleep 1 ; done", utils.ReadInt(t, filepath.Join(workdir, "httphello-port")))}
+				return []string{"--net=socket=listenfd=4", "sh", "-c", fmt.Sprintf("for I in $(seq 1 50) ; do if wget -O - http://127.0.0.1:%d/ 2>/dev/null ; then break ; fi ; sleep 1 ; done", utils.ReadInt(t, filepath.Join(workdir, "httphello-port")))}
 			},
 			Want: utils.WantString("hello"),
 		},
@@ -192,7 +192,7 @@ RUN apt-get update && apt-get install -y wget
 			},
 			Args: func(t *testing.T, workdir string) []string {
 				t.Logf("RUNNING: %s", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(workdir, "httphello-port"))))
-				return []string{"--net=qemu", "sh", "-c", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(workdir, "httphello-port")))}
+				return []string{"--net=socket", "sh", "-c", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(workdir, "httphello-port")))}
 			},
 			Want: utils.WantString("hello"),
 		},
@@ -237,7 +237,7 @@ ENTRYPOINT ["/httphello", "0.0.0.0:80"]
 				return []string{"-net", "--wasi-addr", fmt.Sprintf("localhost:%d", wasiPort), "-p", fmt.Sprintf("localhost:%d:80", port)}
 			},
 			Args: func(t *testing.T, workdir string) []string {
-				return []string{"--net=qemu"}
+				return []string{"--net=socket"}
 			},
 			Want: func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
 				port := utils.ReadInt(t, filepath.Join(workdir, "httphello-port"))
@@ -286,7 +286,7 @@ ENTRYPOINT ["/httphello", "0.0.0.0:80"]
 			Args: func(t *testing.T, workdir string) []string {
 				t.Logf("RUNNING: %s", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(workdir, "httphello-port"))))
 				t.Logf("MAC: %s", utils.ReadString(t, filepath.Join(workdir, "mac")))
-				return []string{"--net=qemu", fmt.Sprintf("--mac=%s", utils.ReadString(t, filepath.Join(workdir, "mac"))), "sh"}
+				return []string{"--net=socket", fmt.Sprintf("--mac=%s", utils.ReadString(t, filepath.Join(workdir, "mac"))), "sh"}
 			},
 			Want: utils.WantPromptWithWorkdir("/ # ",
 				func(workdir string) [][2]string {

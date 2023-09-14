@@ -594,6 +594,6 @@ private:
   EthernetDevice *es;
 };
 
-int start_qemu_net(char *flag);
+int start_socket_net(char *flag);
 
 #endif

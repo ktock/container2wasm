@@ -37,7 +37,7 @@ func main() {
 	if len(args) < 1 {
 		panic("specify args")
 	}
-	qemuAddr := args[0]
+	socketAddr := args[0]
 	forwards := make(map[string]string)
 	for _, p := range portFlags {
 		parts := strings.Split(p, ":")
@@ -109,12 +109,12 @@ func main() {
 				fmt.Fprintf(os.Stderr, "forwarding finished: %v\n", err)
 			}
 		}))
-		if err := http.ListenAndServe(qemuAddr, nil); err != nil {
+		if err := http.ListenAndServe(socketAddr, nil); err != nil {
 			panic(err)
 		}
 		return
 	}
-	conn, err := net.Dial("tcp", qemuAddr)
+	conn, err := net.Dial("tcp", socketAddr)
 	if err != nil {
 		panic(err)
 	}
