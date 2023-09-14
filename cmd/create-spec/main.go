@@ -245,6 +245,7 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	}
 	s, err := ctdoci.GenerateSpecWithPlatform(ctdCtx, nil, p, &ctdcontainers.Container{},
 		ctdoci.WithHostNamespace(specs.NetworkNamespace),
+		ctdoci.WithoutRunMount,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate spec: %w", err)
