@@ -31,6 +31,7 @@ In [our example JS wrapper for container](../../wasi-browser/), by defualt, the 
 
 - Containers can't access to sites not allowing CORS access. For example, we haven't find apt mirrors accessible from browser so the container can't run `apt-get`. We expect more sites will allow CORS access.
 - The proxy supports only HTTP/HTTPS and the implementation isn't mature. So it's possible that some HTTP networking fails on some cases. We'll work on support for more features.
+- The proxy and containers don't have the control over [Forbidden headers](https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name) that are controlled by the browser.
 - Only chrome is our tested browser. The set of accesible sites might be different among browsers and the configurations.
 - WASI-on-browser container is only supported. Emscripten support is the future work.
 
