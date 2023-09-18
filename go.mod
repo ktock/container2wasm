@@ -10,7 +10,7 @@ require (
 	github.com/opencontainers/runtime-spec v1.1.0
 	github.com/urfave/cli v1.22.14
 	golang.org/x/net v0.15.0
-	gotest.tools/v3 v3.5.0
+	gotest.tools/v3 v3.5.1
 )
 
 require (
