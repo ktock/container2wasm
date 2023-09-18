@@ -3,11 +3,11 @@
 [[:books: **Additional Documents**]](#additional-documents)
 [[:arrow_forward: **Demo**]](https://ktock.github.io/container2wasm-demo/)
 
-# container2wasm: Container to WASM converter
+# container2wasm: Docker Container to WASM converter
 
 container2wasm is a container-to-wasm image converter that enables to run the container on WASM.
 
-- Converts a container to WASM with emulation by Bochs (for x86_64 containers) and TinyEMU (for riscv64 containers).
+- Converts a Docker container to WASM with emulation by Bochs (for x86_64 containers) and TinyEMU (for riscv64 containers).
 - Runs on WASI runtimes (e.g. wasmtime, wamr, wasmer, wasmedge, wazero)
 - Runs on browser
 - x86_64 or riscv64 containers are recommended. Other platforms (e.g. arm64) also work (but slow).
