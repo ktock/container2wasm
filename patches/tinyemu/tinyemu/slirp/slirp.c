@@ -95,6 +95,39 @@ static void winsock_cleanup(void)
     WSACleanup();
 }
 
+#elif defined(WASI)
+
+char *inet_ntoa(struct in_addr in)
+{
+	static char buf[16];
+	unsigned char *a = (void *)&in;
+	snprintf(buf, sizeof buf, "%d.%d.%d.%d", a[0], a[1], a[2], a[3]);
+	return buf;
+}
+
+int get_dns_addr(struct in_addr *pdns_addr)
+{
+    struct addrinfo *res;
+    int count = 0;
+    struct addrinfo hints;
+    char *url = "google-public-dns-a.google.com";
+
+    if (dns_addr.s_addr != 0 && (curtime - dns_addr_time) < 1000) {
+        *pdns_addr = dns_addr;
+        return 0;
+    }
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    int ret = getaddrinfo(url, 0, &hints, &res);
+    struct sockaddr_in *psai = (struct sockaddr_in*)res->ai_addr;
+    *pdns_addr = psai->sin_addr;
+    dns_addr = psai->sin_addr;
+    freeaddrinfo(res);
+    return 0;
+}
+
 #else
 
 static struct stat dns_addr_stat;
@@ -778,7 +811,12 @@ ssize_t slirp_send(struct socket *so, const void *buf, size_t len, int flags)
 		return len;
 	}
 #endif
+
+#ifdef WASI
+	return send(so->s, buf, len, 0);
+#else
 	return send(so->s, buf, len, flags);
+#endif
 }
 
 static struct socket *
