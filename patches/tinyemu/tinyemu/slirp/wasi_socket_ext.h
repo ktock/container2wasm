@@ -17,6 +17,8 @@ extern "C" {
 #endif
 
 typedef enum {
+    /* Used only for sock_addr_resolve hints */
+    SOCKET_ANY = -1,
     SOCKET_DGRAM = 0,
     SOCKET_STREAM,
 } __wasi_sock_type_t;
@@ -84,7 +86,7 @@ typedef struct __wasi_addr_t {
     } addr;
 } __wasi_addr_t;
 
-typedef enum { INET4 = 0, INET6 } __wasi_address_family_t;
+typedef enum { INET4 = 0, INET6, INET_UNSPEC } __wasi_address_family_t;
 
 typedef struct __wasi_addr_info_t {
     __wasi_addr_t addr;
@@ -111,7 +113,6 @@ typedef struct __wasi_addr_info_hints_t {
 #define SO_SNDBUF 7
 #define SO_RCVBUF 8
 #define SO_KEEPALIVE 9
-#define SO_OOBINLINE 10
 #define SO_LINGER 13
 #define SO_REUSEPORT 15
 #define SO_RCVTIMEO 20
@@ -120,6 +121,7 @@ typedef struct __wasi_addr_info_hints_t {
 #ifndef TCP_NODELAY
 #define TCP_NODELAY 1
 #endif
+
 #define TCP_KEEPIDLE 4
 #define TCP_KEEPINTVL 5
 #define TCP_QUICKACK 12
@@ -136,7 +138,8 @@ typedef struct __wasi_addr_info_hints_t {
 #define IPV6_LEAVE_GROUP 21
 #define IPV6_V6ONLY 26
 
-#define MSG_OOB	1
+/* Mask OOB as non-flag, since WAMR doesn't support this mode of operation yet */
+#define MSG_OOB 0
 
 struct addrinfo {
     int ai_flags;             /* Input flags.  */
