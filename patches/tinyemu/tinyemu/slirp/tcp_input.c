@@ -578,7 +578,13 @@ findso:
 	    goto cont_input;
 	  }
 
-	  if((tcp_fconnect(so) == -1) && (errno != EINPROGRESS) && (errno != EWOULDBLOCK)) {
+#ifdef WASI
+          if((tcp_fconnect(so) == 0)) {
+              goto cont_conn;
+          }
+#else
+	  if((tcp_fconnect(so) == -1) && (errno != EINPROGRESS) && (errno != EWOULDBLOCK))
+          {
 	    u_char code=ICMP_UNREACH_NET;
 	    DEBUG_MISC((dfd," tcp fconnect errno = %d-%s\n",
 			errno,strerror(errno)));
@@ -612,7 +618,7 @@ findso:
 	    tp->t_state = TCPS_SYN_RECEIVED;
 	  }
 	  return;
-
+#endif
 	cont_conn:
 	  /* m==NULL
 	   * Check if the connect succeeded
