@@ -246,6 +246,8 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	s, err := ctdoci.GenerateSpecWithPlatform(ctdCtx, nil, p, &ctdcontainers.Container{},
 		ctdoci.WithHostNamespace(specs.NetworkNamespace),
 		ctdoci.WithoutRunMount,
+		ctdoci.WithEnv(ic.Env),
+		ctdoci.WithTTY, // TODO: make it configurable
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate spec: %w", err)
@@ -279,7 +281,6 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 			s.Process.User.AdditionalGids = append(s.Process.User.AdditionalGids, uint32(g))
 		}
 	}
-	s.Process.Env = ic.Env
 	args := ic.Entrypoint
 	if len(ic.Cmd) > 0 {
 		args = append(args, ic.Cmd...)
@@ -290,7 +291,6 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	if ic.WorkingDir != "" {
 		s.Process.Cwd = ic.WorkingDir
 	}
-	s.Process.Terminal = true // TODO: make it configurable
 
 	// TODO: support seccomp and apparmor
 	s.Linux.Seccomp = nil
