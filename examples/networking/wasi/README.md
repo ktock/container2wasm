@@ -6,7 +6,7 @@ We provide [`c2w-net`](../../../cmd/c2w-net/) as the user-space network stack ru
 This is implemented based on [`gvisor-tap-vsock`](https://github.com/containers/gvisor-tap-vsock).
 
 The WASM image converted from the container can be configured to expose packets sent from the container via WASI's socket (`sock_*` API).
-WASI runtime binds the socket on a TCP port (e.g. using wasmtime's `--tcplisten` flag and wazero's [`WithTCPListener`](https://github.com/tetratelabs/wazero/blob/405a5c9daca906cc8f52ee13e16511f44ae79557/experimental/sock/sock.go#L31) option).
+WASI runtime binds the socket on a TCP port (e.g. using wasmtime's `tcplisten` flag and wazero's [`WithTCPListener`](https://github.com/tetratelabs/wazero/blob/405a5c9daca906cc8f52ee13e16511f44ae79557/experimental/sock/sock.go#L31) option).
 `c2w-net` running on the host connects to that port and forwards packets sent to/from the container.
 
 The WASM image converted from the container has `--net` flag that enables this networking feature.

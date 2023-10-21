@@ -48,6 +48,8 @@ $ wasmtime --mapdir /mnt/share::/tmp/share out.wasm cat /mnt/share/from-host
 hi
 ```
 
+> If you're using wasmtime >= v14, you need to use `--dir` flag instead of `--mapdir`.
+
 > Please refer to [`./examples/networking/wasi/`](./examples/networking/wasi/) for enabling networking
 
 ### Container on Browser
