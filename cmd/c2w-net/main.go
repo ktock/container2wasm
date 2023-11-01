@@ -76,7 +76,7 @@ func main() {
 	if *invoke {
 		go func() {
 			var conn net.Conn
-			for i := 0; i < 5; i++ {
+			for i := 0; i < 10; i++ {
 				time.Sleep(1 * time.Second)
 				fmt.Fprintf(os.Stderr, "connecting to NW...\n")
 				conn, err = net.Dial("tcp", *wasiAddr)
