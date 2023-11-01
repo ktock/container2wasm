@@ -139,6 +139,7 @@ func build(builderPath string, srcImgName string, destDir, destFile string, clic
 		"buildx", "build", "--progress=plain",
 		"--build-arg", fmt.Sprintf("TARGETARCH=%s", clicontext.String("target-arch")),
 		"--build-arg", fmt.Sprintf("TARGETPLATFORM=linux/%s", clicontext.String("target-arch")),
+		"--platform=linux/amd64",
 	}
 	var dockerfilePath string
 	if o := clicontext.String("dockerfile"); o != "" {
@@ -204,6 +205,7 @@ func buildWithLegacyBuilder(builderPath string, srcImgName, destDir, destFile st
 
 	buildArgs := []string{
 		"build", "--progress=plain",
+		"--platform=linux/amd64",
 		"--build-arg", fmt.Sprintf("TARGETARCH=%s", clicontext.String("target-arch")),
 	}
 	var dockerfilePath string
