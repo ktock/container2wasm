@@ -1,6 +1,6 @@
 [[:arrow_down: **Download**]](https://github.com/ktock/container2wasm/releases)
 [[:book: **Command reference**]](#command-reference)
-[[:books: **Additional Documents**]](#additional-documents)
+[[:books: **Additional Documents**]](#additional-resources)
 [[:arrow_forward: **Demo**]](https://ktock.github.io/container2wasm-demo/)
 
 # container2wasm: Container to WASM converter
@@ -306,9 +306,10 @@ Re-compilation (and possibe re-implementation) of the application is needed.
 - WASI: https://github.com/WebAssembly/WASI
 - WASIX(WASI + additional syscall extensions): https://github.com/wasix-org
 
-## Additional Documents
+## Additional Resources
 
 - [`./examples/`](./examples): Examples (python, php, on-browser, networking, etc.)
+- `vscode-container-wasm`: VSCode extension for running containers on VSCode on browser (e.g. `github.dev`), leveraging container2wasm: https://github.com/ktock/vscode-container-wasm
 
 ## Acknowledgement
 
