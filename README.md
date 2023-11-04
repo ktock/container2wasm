@@ -309,6 +309,7 @@ Re-compilation (and possibe re-implementation) of the application is needed.
 ## Additional Documents
 
 - [`./examples/`](./examples): Examples (python, php, on-browser, networking, etc.)
+- `vscode-container-wasm`: VSCode extension for running containers on VSCode on browser (e.g. `github.dev`), leveraging container2wasm: https://github.com/ktock/vscode-container-wasm
 
 ## Acknowledgement
 
