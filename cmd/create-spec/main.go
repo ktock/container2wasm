@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/containerd/containerd/archive"
 	"github.com/containerd/containerd/archive/compression"
@@ -439,7 +440,7 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 			},
 		},
 	}
-	if arch := config.Architecture; arch != "riscv64" && arch != "amd64" {
+	if arch := config.Architecture; arch != "riscv64" && arch != "amd64" && !strings.HasPrefix(arch, "arm64") {
 		procfsPos, found := 0, false
 		for i, m := range bootConfig.Mounts {
 			if m.FSType == "proc" {

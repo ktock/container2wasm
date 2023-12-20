@@ -25,6 +25,12 @@ ARG OPTIMIZATION_MODE=wizer # "wizer" or "native"
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.5.2
 
+ARG ZLIB_VERSION=1.3
+ARG FFI_VERSION=adbcf2b247696dde2667ab552cb93e0c79455c84
+ARG GLIB_MINOR_VERSION=2.75
+ARG GLIB_VERSION=${GLIB_MINOR_VERSION}.0
+ARG PIXMAN_VERSION=0.42.2
+
 FROM scratch AS oci-image-src
 COPY . .
 
@@ -269,7 +275,7 @@ RUN make -j $(nproc) -f Makefile \
 FROM scratch AS js-tinyemu
 COPY --link --from=tinyemu-emscripten /out/ /
 FROM js-tinyemu AS js-riscv64
-FROM js-tinyemu AS js-aarch64
+# FROM js-tinyemu AS js-aarch64
 FROM js-tinyemu AS js-arm
 FROM js-tinyemu AS js-i386
 FROM js-tinyemu AS js-mips64
@@ -285,6 +291,236 @@ FROM wasi-tinyemu AS wasi-i386
 FROM wasi-tinyemu AS wasi-mips64
 FROM wasi-tinyemu AS wasi-ppc64le
 FROM wasi-tinyemu AS wasi-s390
+
+##########################################################
+
+FROM ubuntu:22.04 AS gcc-aarch64-linux-gnu-base
+RUN apt-get update && apt-get install -y gcc-aarch64-linux-gnu linux-libc-dev-arm64-cross git make
+
+FROM gcc-aarch64-linux-gnu-base AS linux-aarch64-dev-common
+RUN apt-get update && apt-get install -y gperf flex bison bc
+RUN mkdir /work-buildlinux
+WORKDIR /work-buildlinux
+RUN git clone -b v6.1 --depth 1 https://github.com/torvalds/linux
+
+FROM linux-aarch64-dev-common AS linux-aarch64-dev
+RUN apt-get install -y libelf-dev
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets ./patches/qemu-tci/linux_arm64_config ./.config
+RUN make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) all && \
+    mkdir /out && \
+    mv /work-buildlinux/linux/arch/arm64/boot/Image /out/Image && \
+    make clean
+
+FROM linux-aarch64-dev-common AS linux-aarch64-config-dev
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets ./patches/qemu-tci/linux_arm64_config ./.config
+RUN make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+
+FROM scratch AS linux-aarch64-config
+COPY --link --from=linux-aarch64-config-dev /work-buildlinux/linux/.config /
+
+FROM gcc-aarch64-linux-gnu-base AS busybox-aarch64-dev
+ARG BUSYBOX_VERSION
+RUN apt-get update -y && apt-get install -y gcc bzip2
+WORKDIR /work
+RUN git clone -b $BUSYBOX_VERSION --depth 1 https://git.busybox.net/busybox
+WORKDIR /work/busybox
+RUN make CROSS_COMPILE=aarch64-linux-gnu- LDFLAGS=--static defconfig
+RUN make CROSS_COMPILE=aarch64-linux-gnu- LDFLAGS=--static -j$(nproc)
+RUN mkdir -p /out/bin && mv busybox /out/bin/busybox
+RUN make LDFLAGS=--static defconfig
+RUN make LDFLAGS=--static -j$(nproc)
+RUN for i in $(./busybox --list) ; do ln -s busybox /out/bin/$i ; done
+RUN mkdir -p /out/usr/share/udhcpc/ && cp ./examples/udhcp/simple.script /out/usr/share/udhcpc/default.script
+
+FROM golang-base AS runc-aarch64-dev
+ARG RUNC_VERSION
+RUN apt-get update -y && apt-get install -y git make gperf
+RUN apt-get update -y && apt-get install -y gcc-aarch64-linux-gnu libc-dev-arm64-cross
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    git clone https://github.com/opencontainers/runc.git /go/src/github.com/opencontainers/runc && \
+    cd /go/src/github.com/opencontainers/runc && \
+    git checkout "${RUNC_VERSION}" && \
+    make static GOARCH=arm64 CC=aarch64-linux-gnu-gcc EXTRA_LDFLAGS='-s -w' BUILDTAGS="" EXTRA_LDFLAGS='-s -w' BUILDTAGS="" && \
+    mkdir -p /out/ && mv runc /out/runc
+
+FROM gcc-aarch64-linux-gnu-base AS tini-aarch64-dev
+# https://github.com/krallin/tini#building-tini
+RUN apt-get update -y && apt-get install -y cmake
+ENV CFLAGS="-DPR_SET_CHILD_SUBREAPER=36 -DPR_GET_CHILD_SUBREAPER=37"
+WORKDIR /work
+RUN git clone -b v0.19.0 https://github.com/krallin/tini
+WORKDIR /work/tini
+ENV CC="aarch64-linux-gnu-gcc -static"
+RUN cmake . && make && mkdir /out/ && mv tini /out/
+
+FROM golang-base AS init-aarch64-dev
+COPY --link --from=assets / /work
+WORKDIR /work
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOARCH=arm64 go build -ldflags "-s -w -extldflags '-static'" -tags "osusergo netgo static_build" -o /out/init ./cmd/init
+
+FROM ubuntu:22.04 AS rootfs-aarch64-dev
+RUN apt-get update -y && apt-get install -y mkisofs
+COPY --link --from=busybox-aarch64-dev /out/ /rootfs/
+COPY --link --from=runc-aarch64-dev /out/runc /rootfs/sbin/runc
+COPY --link --from=bundle-dev /out/ /rootfs/
+COPY --link --from=init-aarch64-dev /out/init /rootfs/sbin/init
+COPY --link --from=tini-aarch64-dev /out/tini /rootfs/sbin/tini
+RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
+RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
+
+FROM emscripten/emsdk:$EMSDK_VERSION AS glib-emscripten-base
+# Porting glib to emscripten inspired by https://github.com/emscripten-core/emscripten/issues/11066
+ENV TARGET=/glib-emscripten/target
+ENV CFLAGS="-O2 -matomics -mbulk-memory -DNDEBUG -sASYNCIFY "
+ENV CXXFLAGS="$CFLAGS"
+ENV LDFLAGS="-L$TARGET/lib -O2"
+ENV CPATH="$TARGET/include"
+ENV PKG_CONFIG_PATH="$TARGET/lib/pkgconfig"
+ENV EM_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
+ENV CHOST="wasm32-unknown-linux"
+ENV MAKEFLAGS="-j$(nproc)"
+RUN apt-get update && apt-get install -y \
+    autoconf \
+    build-essential \
+    libglib2.0-dev \
+    libtool \
+    pkgconf \
+    ninja-build \
+    python3-pip
+RUN pip3 install meson
+RUN mkdir /glib-emscripten
+WORKDIR /glib-emscripten
+RUN mkdir -p $TARGET
+
+FROM glib-emscripten-base AS zlib-emscripten-dev
+ARG ZLIB_VERSION
+RUN mkdir -p /zlib
+RUN curl -Ls https://zlib.net/zlib-$ZLIB_VERSION.tar.xz | tar xJC /zlib --strip-components=1
+WORKDIR /zlib
+RUN emconfigure ./configure --prefix=$TARGET --static
+RUN make install
+
+FROM glib-emscripten-base AS libffi-emscripten-dev
+ARG FFI_VERSION
+RUN mkdir -p /libffi
+RUN git clone https://github.com/libffi/libffi /libffi
+WORKDIR /libffi
+RUN git checkout $FFI_VERSION
+RUN autoreconf -fiv
+RUN LDFLAGS="$LDFLAGS -sEXPORTED_RUNTIME_METHODS='getTempRet0,setTempRet0'" ; \
+    emconfigure ./configure --host=$CHOST --prefix=$TARGET --enable-static --disable-shared --disable-dependency-tracking \
+    --disable-builddir --disable-multi-os-directory --disable-raw-api --disable-structs --disable-docs
+RUN emmake make install SUBDIRS='include'
+
+FROM glib-emscripten-base AS glib-emscripten-dev
+ARG GLIB_VERSION
+ARG GLIB_MINOR_VERSION
+RUN mkdir -p /stub
+WORKDIR /stub
+RUN <<EOF
+cat <<'EOT' > res_query.c
+#include <netdb.h>
+int res_query(const char *name, int class, int type, unsigned char *dest, int len)
+{
+    h_errno = HOST_NOT_FOUND;
+    return -1;
+}
+EOT
+EOF
+RUN emcc ${CFLAGS} -c res_query.c -fPIC -o libresolv.o
+RUN ar rcs libresolv.a libresolv.o
+RUN mkdir -p $TARGET/lib/
+RUN cp libresolv.a $TARGET/lib/
+
+RUN mkdir -p /glib
+RUN curl -Lks https://download.gnome.org/sources/glib/${GLIB_MINOR_VERSION}/glib-$GLIB_VERSION.tar.xz | tar xJC /glib --strip-components=1
+
+COPY --from=zlib-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --from=libffi-emscripten-dev /glib-emscripten/ /glib-emscripten/
+
+WORKDIR /glib
+ENV CFLAGS="-Wno-error=incompatible-function-pointer-types -Wincompatible-function-pointer-types -O3 -matomics -mbulk-memory -DNDEBUG"
+ENV CXXFLAGS="$CFLAGS"
+RUN <<EOF
+cat <<'EOT' > /cross.meson
+[host_machine]
+system = 'emscripten'
+cpu_family = 'wasm32'
+cpu = 'wasm32'
+endian = 'little'
+
+[binaries]
+c = 'emcc'
+cpp = 'em++'
+ar = 'emar'
+ranlib = 'emranlib'
+pkgconfig = ['pkg-config', '--static']
+EOT
+EOF
+RUN meson setup _build --prefix=$TARGET --cross-file=/cross.meson --default-library=static --buildtype=release \
+    --force-fallback-for=pcre2,gvdb -Dselinux=disabled -Dxattr=false -Dlibmount=disabled -Dnls=disabled \
+    -Dtests=false -Dglib_assert=false -Dglib_checks=false
+RUN sed -i -E "/#define HAVE_CLOSE_RANGE 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_EPOLL_CREATE 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_KQUEUE 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_POSIX_SPAWN 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_FALLOCATE 1/d" ./_build/config.h
+RUN meson install -C _build
+
+FROM glib-emscripten-base AS pixman-emscripten-dev
+ARG PIXMAN_VERSION
+RUN mkdir /pixman/
+RUN git clone  https://gitlab.freedesktop.org/pixman/pixman /pixman/
+WORKDIR /pixman
+RUN git checkout pixman-$PIXMAN_VERSION
+RUN NOCONFIGURE=y ./autogen.sh
+RUN emconfigure ./configure --prefix=/glib-emscripten/target/
+RUN emmake make -j$(nproc)
+RUN emmake make install
+# TODO: do not install them
+RUN rm /glib-emscripten/target/lib/libpixman-1.so /glib-emscripten/target/lib/libpixman-1.so.0 /glib-emscripten/target/lib/libpixman-1.so.$PIXMAN_VERSION
+
+FROM scratch AS vm-aarch64-dev
+COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
+COPY --link --from=linux-aarch64-dev /out/Image /pack/
+
+FROM glib-emscripten-base AS qemu-tci-aarch64
+RUN mkdir /qemu
+RUN git clone https://github.com/qemu/qemu /qemu/
+WORKDIR /qemu
+RUN git checkout 7c18f2d663521f1b31b821a13358ce38075eaf7d
+COPY --from=zlib-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --from=libffi-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --from=glib-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --from=pixman-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --from=vm-aarch64-dev /pack /pack
+COPY --link --from=assets ./patches/qemu-tci/patch.diff /
+RUN cat /patch.diff | git apply
+RUN mkdir -p build
+WORKDIR /qemu/build
+RUN git config --global --add safe.directory '*'
+RUN EXTRA_CFLAGS="-O3 -matomics -mbulk-memory -g -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sEMULATE_FUNCTION_POINTER_CASTS -sASYNCIFY=1 -sASYNCIFY_IMPORTS=ffi_call_js -pthread -sPROXY_TO_PTHREAD=1 -sALLOW_MEMORY_GROWTH -sFORCE_FILESYSTEM" ; \
+    emconfigure ../configure --static --target-list=aarch64-softmmu --cpu=aarch64 --cross-prefix= \
+    --without-default-features --enable-system --enable-tcg-interpreter --with-coroutine=fiber \
+    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0"
+RUN emmake make -j $(nproc) qemu-system-aarch64
+RUN cp /qemu/pc-bios/edk2-aarch64-code.fd.bz2 /pack/
+RUN bzip2 -d /pack/edk2-aarch64-code.fd.bz2
+RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-aarch64.data --preload /pack > load.js
+
+FROM scratch AS js-aarch64
+COPY --from=qemu-tci-aarch64 /qemu/build/qemu-system-aarch64 /out.js
+COPY --from=qemu-tci-aarch64 /qemu/build/qemu-system-aarch64.wasm /
+COPY --from=qemu-tci-aarch64 /qemu/build/qemu-system-aarch64.worker.js /
+COPY --from=qemu-tci-aarch64 /qemu/build/qemu-system-aarch64.data /
+COPY --from=qemu-tci-aarch64 /qemu/build/load.js /
+
+##########################################################
 
 FROM ubuntu:22.04 AS gcc-x86-64-linux-gnu-base
 RUN apt-get update && apt-get install -y gcc-x86-64-linux-gnu linux-libc-dev-amd64-cross git make

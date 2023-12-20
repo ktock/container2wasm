@@ -1,0 +1,313 @@
+diff --git a/block/file-posix.c b/block/file-posix.c
+index c7b723368e..d8fe15f916 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -107,6 +107,10 @@
+ #include <sys/diskslice.h>
+ #endif
+ 
++#ifdef EMSCRIPTEN
++#include <sys/ioctl.h>
++#endif
++
+ /* OS X does not have O_DSYNC */
+ #ifndef O_DSYNC
+ #ifdef O_SYNC
+@@ -1776,6 +1780,13 @@ static int handle_aiocb_write_zeroes_unmap(void *opaque)
+     return handle_aiocb_write_zeroes(aiocb);
+ }
+ 
++#ifdef EMSCRIPTEN
++ssize_t copy_file_range(int a, off_t * b, int, off_t * c, size_t d, unsigned e)
++{
++    errno = ENOSYS;
++    return -1;
++}
++#else
+ #ifndef HAVE_COPY_FILE_RANGE
+ static off_t copy_file_range(int in_fd, off_t *in_off, int out_fd,
+                              off_t *out_off, size_t len, unsigned int flags)
+@@ -1789,6 +1800,7 @@ static off_t copy_file_range(int in_fd, off_t *in_off, int out_fd,
+ #endif
+ }
+ #endif
++#endif
+ 
+ static int handle_aiocb_copy_range(void *opaque)
+ {
+diff --git a/configure b/configure
+index 77c03315f8..6a0cba2e15 100755
+--- a/configure
++++ b/configure
+@@ -1184,13 +1184,13 @@ if test -z "$werror" ; then
+     fi
+ fi
+ 
+-if test "$targetos" = "bogus"; then
+-    # Now that we know that we're not printing the help and that
+-    # the compiler works (so the results of the check_defines we used
+-    # to identify the OS are reliable), if we didn't recognize the
+-    # host OS we should stop now.
+-    error_exit "Unrecognized host OS (uname -s reports '$(uname -s)')"
+-fi
++# if test "$targetos" = "bogus"; then
++#     # Now that we know that we're not printing the help and that
++#     # the compiler works (so the results of the check_defines we used
++#     # to identify the OS are reliable), if we didn't recognize the
++#     # host OS we should stop now.
++#     error_exit "Unrecognized host OS (uname -s reports '$(uname -s)')"
++# fi
+ 
+ # Check whether the compiler matches our minimum requirements:
+ cat > $TMPC << EOF
+@@ -1631,6 +1631,8 @@ else
+       error_exit "only the 'windows' coroutine backend is valid for Windows"
+     fi
+     ;;
++  fiber)
++    ;;
+   *)
+     error_exit "unknown coroutine backend $coroutine"
+     ;;
+@@ -1692,9 +1694,9 @@ else # "$safe_stack" = ""
+     safe_stack="no"
+   else
+     safe_stack="yes"
+-    if test "$coroutine" != "ucontext"; then
+-      error_exit "SafeStack is only supported by the coroutine backend ucontext"
+-    fi
++    # if test "$coroutine" != "ucontext"; then
++    #   error_exit "SafeStack is only supported by the coroutine backend ucontext"
++    # fi
+   fi
+ fi
+ fi
+diff --git a/include/qemu/cacheflush.h b/include/qemu/cacheflush.h
+index ae20bcda73..3f414fb7c9 100644
+--- a/include/qemu/cacheflush.h
++++ b/include/qemu/cacheflush.h
+@@ -19,7 +19,7 @@
+  * mappings of the same physical page(s).
+  */
+ 
+-#if defined(__i386__) || defined(__x86_64__) || defined(__s390__)
++#if defined(__i386__) || defined(__x86_64__) || defined(__s390__) || defined(EMSCRIPTEN)
+ 
+ static inline void flush_idcache_range(uintptr_t rx, uintptr_t rw, size_t len)
+ {
+diff --git a/include/qemu/osdep.h b/include/qemu/osdep.h
+index 9eff0be95b..3625236a31 100644
+--- a/include/qemu/osdep.h
++++ b/include/qemu/osdep.h
+@@ -116,7 +116,7 @@ QEMU_EXTERN_C int daemon(int, int);
+ #include <setjmp.h>
+ #include <signal.h>
+ 
+-#ifdef CONFIG_IOVEC
++#if defined(CONFIG_IOVEC) || defined(EMSCRIPTEN)
+ #include <sys/uio.h>
+ #endif
+ 
+@@ -264,6 +264,7 @@ void QEMU_ERROR("code path is reachable")
+ #ifndef WCOREDUMP
+ #define WCOREDUMP(status) 0
+ #endif
++#ifndef EMSCRIPTEN
+ /*
+  * We have a lot of unaudited code that may fail in strange ways, or
+  * even be a security risk during migration, if you disable assertions
+@@ -279,6 +280,7 @@ void QEMU_ERROR("code path is reachable")
+ #ifdef G_DISABLE_ASSERT
+ #error building with G_DISABLE_ASSERT is not supported
+ #endif
++#endif
+ 
+ #ifndef O_LARGEFILE
+ #define O_LARGEFILE 0
+@@ -582,7 +584,7 @@ bool qemu_write_pidfile(const char *pidfile, Error **errp);
+ 
+ int qemu_get_thread_id(void);
+ 
+-#ifndef CONFIG_IOVEC
++#if !defined(CONFIG_IOVEC) && !defined(EMSCRIPTEN)
+ struct iovec {
+     void *iov_base;
+     size_t iov_len;
+diff --git a/os-posix.c b/os-posix.c
+index 5adc69f560..7dd78a69c1 100644
+--- a/os-posix.c
++++ b/os-posix.c
+@@ -177,11 +177,13 @@ static void change_process_uid(void)
+             exit(1);
+         }
+         if (user_pwd) {
++#ifndef EMSCRIPTEN
+             if (initgroups(user_pwd->pw_name, user_pwd->pw_gid) < 0) {
+                 error_report("Failed to initgroups(\"%s\", %d)",
+                         user_pwd->pw_name, user_pwd->pw_gid);
+                 exit(1);
+             }
++#endif
+         } else {
+             if (setgroups(1, &user_gid) < 0) {
+                 error_report("Failed to setgroups(1, [%d])",
+diff --git a/util/cacheflush.c b/util/cacheflush.c
+index 06c2333a60..8e99b67235 100644
+--- a/util/cacheflush.c
++++ b/util/cacheflush.c
+@@ -225,7 +225,7 @@ static void __attribute__((constructor)) init_cache_info(void)
+  * Architecture (+ OS) specific cache flushing mechanisms.
+  */
+ 
+-#if defined(__i386__) || defined(__x86_64__) || defined(__s390__)
++#if defined(__i386__) || defined(__x86_64__) || defined(__s390__) || defined(EMSCRIPTEN)
+ 
+ /* Caches are coherent and do not require flushing; symbol inline. */
+ 
+diff --git a/util/coroutine-fiber.c b/util/coroutine-fiber.c
+new file mode 100644
+index 0000000000..be0c2bfe1e
+--- /dev/null
++++ b/util/coroutine-fiber.c
+@@ -0,0 +1,117 @@
++/*
++ * emscripten fiber coroutine initialization code
++ * based on coroutine-ucontext.c
++ *
++ * Copyright (C) 2006  Anthony Liguori <anthony@codemonkey.ws>
++ * Copyright (C) 2011  Kevin Wolf <kwolf@redhat.com>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.0 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/coroutine_int.h"
++#include "qemu/coroutine-tls.h"
++
++#include <emscripten/fiber.h>
++
++typedef struct {
++    Coroutine base;
++
++    void *asyncify_stack;
++    size_t asyncify_stack_size;
++
++    CoroutineAction action;
++    
++    emscripten_fiber_t fiber;
++} CoroutineEmscripten;
++
++/**
++ * Per-thread coroutine bookkeeping
++ */
++QEMU_DEFINE_STATIC_CO_TLS(Coroutine *, current);
++QEMU_DEFINE_STATIC_CO_TLS(CoroutineEmscripten *, leader);
++size_t leader_asyncify_stack_size = COROUTINE_STACK_SIZE;
++
++static void coroutine_trampoline(void *co_)
++{
++    Coroutine *co = co_;
++
++    while (true) {
++        co->entry(co->entry_arg);
++        qemu_coroutine_switch(co, co->caller, COROUTINE_TERMINATE);
++    }
++}
++
++Coroutine *qemu_coroutine_new(void)
++{
++    CoroutineEmscripten *co;
++
++    co = g_malloc0(sizeof(*co));
++
++    size_t stack_size = COROUTINE_STACK_SIZE;
++    char *stack = qemu_alloc_stack(&stack_size);
++
++    co->asyncify_stack_size = COROUTINE_STACK_SIZE;
++    co->asyncify_stack = g_malloc0(co->asyncify_stack_size);
++    emscripten_fiber_init(&co->fiber, coroutine_trampoline, &co->base,
++                          stack, stack_size, co->asyncify_stack, co->asyncify_stack_size);
++    
++    return &co->base;
++}
++
++void qemu_coroutine_delete(Coroutine *co_)
++{
++    CoroutineEmscripten *co = DO_UPCAST(CoroutineEmscripten, base, co_);
++
++    g_free(co->asyncify_stack);
++    g_free(co);
++}
++
++CoroutineAction qemu_coroutine_switch(Coroutine *from_, Coroutine *to_,
++                      CoroutineAction action)
++{
++    CoroutineEmscripten *from = DO_UPCAST(CoroutineEmscripten, base, from_);
++    CoroutineEmscripten *to = DO_UPCAST(CoroutineEmscripten, base, to_);
++
++    set_current(to_);
++    to->action = action;
++    emscripten_fiber_swap(&from->fiber, &to->fiber);
++    return from->action;
++}
++
++Coroutine *qemu_coroutine_self(void)
++{
++    Coroutine *self = get_current();
++
++    if (!self) {
++        CoroutineEmscripten *leaderp = get_leader();
++        if (!leaderp) {
++            leaderp = g_malloc0(sizeof(*leaderp));
++            leaderp->asyncify_stack = g_malloc0(leader_asyncify_stack_size);
++            leaderp->asyncify_stack_size = leader_asyncify_stack_size;
++            emscripten_fiber_init_from_current_context(&leaderp->fiber, leaderp->asyncify_stack, leaderp->asyncify_stack_size);
++            set_leader(leaderp);
++        }
++        self = &leaderp->base;
++        set_current(self);
++    }
++    return self;
++}
++
++bool qemu_in_coroutine(void)
++{
++    Coroutine *self = get_current();
++
++    return self && self->caller;
++}
+diff --git a/util/mmap-alloc.c b/util/mmap-alloc.c
+index ed14f9c64d..8c8708ca4d 100644
+--- a/util/mmap-alloc.c
++++ b/util/mmap-alloc.c
+@@ -250,6 +250,11 @@ void *qemu_ram_mmap(int fd,
+                     uint32_t qemu_map_flags,
+                     off_t map_offset)
+ {
++#if defined(EMSCRIPTEN)
++    void *ptr;
++    ptr = mmap_activate(0, size + align, fd, qemu_map_flags, map_offset);
++    return (void *)QEMU_ALIGN_UP((uintptr_t)ptr, align);
++#else
+     const size_t guard_pagesize = mmap_guard_pagesize(fd);
+     size_t offset, total;
+     void *ptr, *guardptr;
+@@ -292,6 +297,7 @@ void *qemu_ram_mmap(int fd,
+     }
+ 
+     return ptr;
++#endif
+ }
+ 
+ void qemu_ram_munmap(int fd, void *ptr, size_t size)
