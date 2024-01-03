@@ -204,7 +204,7 @@ COPY --link --from=linux-riscv64-dev /out/Image /pack/Image
 COPY --link --from=rootfs-riscv64-dev /out/rootfs.bin /pack/rootfs.bin
 COPY --link --from=tinyemu-config-dev /out/tinyemu.config /pack/config
 
-FROM rust:1-buster AS tinyemu-dev-common
+FROM rust:1.74.1-buster AS tinyemu-dev-common
 ARG WASI_VFS_VERSION
 ARG WASI_SDK_VERSION
 ARG WASI_SDK_VERSION_FULL
@@ -408,7 +408,7 @@ COPY --link --from=bios-amd64-dev /out/ /pack/
 COPY --link --from=rootfs-amd64-dev /out/rootfs.bin /pack/
 COPY --link --from=bochs-config-dev /out/bochsrc /pack/
 
-FROM rust:1-buster AS bochs-dev-common
+FROM rust:1.74.1-buster AS bochs-dev-common
 ARG WASI_VFS_VERSION
 ARG WASI_SDK_VERSION
 ARG WASI_SDK_VERSION_FULL
