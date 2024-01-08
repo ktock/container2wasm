@@ -57,7 +57,7 @@ func TestWasmtime(t *testing.T) {
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
 			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				return []string{"--mapdir=/mapped/dir/test::" + filepath.Join(workdir, "wasmtime-mapdirtest")}
+				return []string{"--dir=" + filepath.Join(workdir, "wasmtime-mapdirtest") + "::/mapped/dir/test"}
 			},
 			Args: utils.StringFlags("cat", "/mapped/dir/test/hi"),
 			Want: utils.WantString("teststring"),
@@ -102,7 +102,7 @@ func TestWasmtime(t *testing.T) {
 			},
 			Runtime: "wasmtime",
 			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				return []string{"--mapdir=/mapped/dir/test::" + filepath.Join(workdir, "wasmtime-mapdirtest-io")}
+				return []string{"--dir=" + filepath.Join(workdir, "wasmtime-mapdirtest-io") + "::/mapped/dir/test"}
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ",

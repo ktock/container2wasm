@@ -26,11 +26,12 @@ func main() {
 	var portFlags sliceFlags
 	flag.Var(&portFlags, "p", "map port between host and guest (host:guest). -mac must be set correctly.")
 	var (
-		debug    = flag.Bool("debug", false, "enable debug print")
-		listenWS = flag.Bool("listen-ws", false, "listen on a websocket port specified as argument")
-		invoke   = flag.Bool("invoke", false, "invoke the container with NW support")
-		mac      = flag.String("mac", vmMAC, "mac address assigned to the container")
-		wasiAddr = flag.String("wasi-addr", "127.0.0.1:1234", "IP address used to communicate between wasi and network stack (valid only with invoke flag)") // TODO: automatically use empty random port or unix socket
+		debug         = flag.Bool("debug", false, "enable debug print")
+		listenWS      = flag.Bool("listen-ws", false, "listen on a websocket port specified as argument")
+		invoke        = flag.Bool("invoke", false, "invoke the container with NW support")
+		mac           = flag.String("mac", vmMAC, "mac address assigned to the container")
+		wasiAddr      = flag.String("wasi-addr", "127.0.0.1:1234", "IP address used to communicate between wasi and network stack (valid only with invoke flag)") // TODO: automatically use empty random port or unix socket
+		wasmtimeCli13 = flag.Bool("wasmtime-cli-13", false, "Use old wasmtime CLI (<= 13)")
 	)
 	flag.Parse()
 	args := flag.Args()
@@ -93,7 +94,12 @@ func main() {
 				fmt.Fprintf(os.Stderr, "failed AcceptQemu: %v\n", err)
 			}
 		}()
-		cmd := exec.Command("wasmtime", append([]string{"run", "--tcplisten=" + *wasiAddr, "--env='LISTEN_FDS=1'", "--"}, args...)...)
+		var cmd *exec.Cmd
+		if *wasmtimeCli13 {
+			cmd = exec.Command("wasmtime", append([]string{"run", "--tcplisten=" + *wasiAddr, "--env='LISTEN_FDS=1'", "--"}, args...)...)
+		} else {
+			cmd = exec.Command("wasmtime", append([]string{"run", "-S", "preview2=n", "-S", "tcplisten=" + *wasiAddr, "--env='LISTEN_FDS=1'", "--"}, args...)...)
+		}
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
