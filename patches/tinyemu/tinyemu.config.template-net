@@ -1,0 +1,10 @@
+{
+    version: 1,
+    machine: "riscv64",
+    memory_size: ${MEMORY_SIZE},
+    bios: "/pack/bbl.bin",
+    kernel: "/pack/Image",
+    cmdline: "console=hvc0 root=/dev/vda ro quiet loglevel=${LOGLEVEL} init=/sbin/tini virtio_net.napi_tx=0 -- /sbin/init",
+    drive0: { file: "/pack/rootfs.bin" },
+    eth0: { driver: "user" },
+}

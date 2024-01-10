@@ -66,6 +66,10 @@ func main() {
 			Name:  "legacy",
 			Usage: "Use \"docker build\" instead of buildx (no support for assets flag)",
 		},
+		cli.BoolFlag{
+			Name:  "net",
+			Usage: "Build with networking capabilities (default: false)",
+		},
 	}, flags...)
 	app.Action = rootAction
 	if err := app.Run(os.Args); err != nil {
@@ -140,6 +144,11 @@ func build(builderPath string, srcImgName string, destDir, destFile string, clic
 		"--build-arg", fmt.Sprintf("TARGETARCH=%s", clicontext.String("target-arch")),
 		"--build-arg", fmt.Sprintf("TARGETPLATFORM=linux/%s", clicontext.String("target-arch")),
 		"--platform=linux/amd64",
+	}
+	if clicontext.Bool("net") {
+		buildxArgs = append(buildxArgs, "--build-arg", "NETWORKING=y")
+	} else {
+		buildxArgs = append(buildxArgs, "--build-arg", "NETWORKING=")
 	}
 	var dockerfilePath string
 	if o := clicontext.String("dockerfile"); o != "" {

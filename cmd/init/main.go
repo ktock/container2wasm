@@ -158,8 +158,9 @@ func doInit() error {
 	}
 	log.Printf("INFO:\n%s\n", string(infoD))
 	var withNet bool
+        var withSocketNet bool
 	var mac string
-	s, withNet, mac = patchSpec(s, infoD, imageConfig)
+	s, withNet, withSocketNet, mac = patchSpec(s, infoD, imageConfig)
 	log.Printf("Running: %+v\n", s.Process.Args)
 	sd, err := json.Marshal(s)
 	if err != nil {
@@ -169,7 +170,7 @@ func doInit() error {
 		return err
 	}
 
-	if withNet {
+	if (withNet) || (withSocketNet) {
 		if mac != "" {
 			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "down").CombinedOutput(); err != nil {
 				return fmt.Errorf("failed eth0 down: %v: %w", string(o), err)
@@ -190,6 +191,11 @@ func doInit() error {
 		for _, f := range []string{"/etc/hosts", "/etc/resolv.conf"} {
 			if err := syscall.Mount(f, filepath.Join("/run/rootfs", f), "", syscall.MS_BIND, ""); err != nil {
 				return fmt.Errorf("cannot mount %q: %w", f, err)
+			}
+		}
+		if withSocketNet {
+			if o, err := exec.Command("sysctl", "net.ipv4.conf.all.forwarding=1").CombinedOutput(); err != nil {
+				log.Printf("sysctl failed (%w): %s\n", err, string(o))
 			}
 		}
 	}
@@ -271,7 +277,7 @@ var (
 	delimArgs  = regexp.MustCompile(`[^\\] `)
 )
 
-func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_ runtimespec.Spec, withNet bool, mac string) {
+func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_ runtimespec.Spec, withNet bool, withSocketNet bool, mac string) {
 	var options []string
 	lmchs := delimLines.FindAllIndex(infoD, -1)
 	prev := 0
@@ -338,6 +344,7 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_
 	if len(args) == 0 {
 		args = imageConfig.Config.Cmd
 	}
+	withSocketNet = true
 	s.Process.Args = append(entrypoint, args...)
-	return s, withNet, mac
+	return s, withNet, withSocketNet, mac
 }

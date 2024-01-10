@@ -635,7 +635,10 @@ tcp_listen(Slirp *slirp, uint32_t haddr, u_int hport, uint32_t laddr,
 #endif
 		return NULL;
 	}
+
+#ifndef WASI
 	setsockopt(s,SOL_SOCKET,SO_OOBINLINE,(char *)&opt,sizeof(int));
+#endif
 
 	getsockname(s,(struct sockaddr *)&addr,&addrlen);
 	so->so_fport = addr.sin_port;

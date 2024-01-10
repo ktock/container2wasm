@@ -245,7 +245,11 @@ void if_start(struct ttys *);
 void lprint(const char *, ...) __attribute__((format(printf, 1, 2)));
 
 #ifndef _WIN32
+#ifndef WASI
 #include <netdb.h>
+#else
+#include "wasi_socket_ext.h"
+#endif
 #endif
 
 #define DEFAULT_BAUD 115200

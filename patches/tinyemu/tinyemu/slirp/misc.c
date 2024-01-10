@@ -234,8 +234,10 @@ fork_exec(struct socket *so, const char *ex, int do_pty)
                         closesocket(s);
 			opt = 1;
 			setsockopt(so->s,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(int));
+#ifndef WASI
 			opt = 1;
 			setsockopt(so->s,SOL_SOCKET,SO_OOBINLINE,(char *)&opt,sizeof(int));
+#endif
 		}
 		fd_nonblock(so->s);
 

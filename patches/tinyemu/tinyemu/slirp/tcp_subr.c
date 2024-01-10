@@ -332,8 +332,10 @@ int tcp_fconnect(struct socket *so)
     fd_nonblock(s);
     opt = 1;
     setsockopt(s,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(opt ));
+#ifndef WASI
     opt = 1;
     setsockopt(s,SOL_SOCKET,SO_OOBINLINE,(char *)&opt,sizeof(opt ));
+#endif
 
     addr.sin_family = AF_INET;
     if ((so->so_faddr.s_addr & slirp->vnetwork_mask.s_addr) ==
@@ -355,11 +357,16 @@ int tcp_fconnect(struct socket *so)
     /* We don't care what port we get */
     ret = connect(s,(struct sockaddr *)&addr,sizeof (addr));
 
+    if (ret == 0) {
+        soisfconnected(so);
+    } else
+    {
     /*
      * If it's not in progress, it failed, so we just return 0,
      * without clearing SS_NOFDREF
      */
-    soisfconnecting(so);
+      soisfconnecting(so);
+    }
   }
 
   return(ret);
@@ -420,8 +427,10 @@ tcp_connect(struct socket *inso)
 	fd_nonblock(s);
 	opt = 1;
 	setsockopt(s,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(int));
+#ifndef WASI
 	opt = 1;
 	setsockopt(s,SOL_SOCKET,SO_OOBINLINE,(char *)&opt,sizeof(int));
+#endif
 	opt = 1;
 	setsockopt(s,IPPROTO_TCP,TCP_NODELAY,(char *)&opt,sizeof(int));
 

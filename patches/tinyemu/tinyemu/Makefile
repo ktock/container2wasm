@@ -35,7 +35,9 @@ CONFIG_X86EMU=y
 # win32 build (not usable yet)
 #CONFIG_WIN32=y
 # user space network redirector
-CONFIG_SLIRP=y
+CONFIG_SLIRP=n
+# WASI extension
+#CONFIG_WASI=n
 
 ifdef CONFIG_WIN32
 CROSS_PREFIX=i686-w64-mingw32-
@@ -65,9 +67,13 @@ all: $(PROGS)
 EMU_OBJS:=virtio.o pci.o fs.o cutils.o iomem.o simplefb.o \
     json.o machine.o temu.o
 
+ifdef CONFIG_WASI
+EMU_OBJS+=wasi.o
+endif
+
 ifdef CONFIG_SLIRP
 CFLAGS+=-DCONFIG_SLIRP
-EMU_OBJS+=$(addprefix slirp/, bootp.o ip_icmp.o mbuf.o slirp.o tcp_output.o cksum.o ip_input.o misc.o socket.o tcp_subr.o udp.o if.o ip_output.o sbuf.o tcp_input.o tcp_timer.o)
+EMU_OBJS+=$(addprefix slirp/, bootp.o ip_icmp.o mbuf.o slirp.o tcp_output.o cksum.o ip_input.o misc.o socket.o tcp_subr.o udp.o if.o ip_output.o sbuf.o tcp_input.o tcp_timer.o wasi_socket_ext.o)
 endif
 
 ifndef CONFIG_WIN32
