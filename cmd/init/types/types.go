@@ -1,18 +1,21 @@
 package init
 
 type BootConfig struct {
-	Mounts    []MountInfo   `json:"mounts"`
-	CmdPreRun [][]string    `json:"cmd_pre_run,omitempty"`
-	Cmd       [][]string    `json:"cmd,omitempty"`
-	Debug     bool          `json:"debug,omitempty"`
-	DebugInit bool          `json:"debug_init,omitempty"`
-	Container ContainerInfo `json:"container"`
+	Mounts     []MountInfo   `json:"mounts"`
+	CmdPreRun  [][]string    `json:"cmd_pre_run,omitempty"`
+	Cmd        [][]string    `json:"cmd,omitempty"`
+	Debug      bool          `json:"debug,omitempty"`
+	DebugInit  bool          `json:"debug_init,omitempty"`
+	Container  ContainerInfo `json:"container"`
+	PostMounts []MountInfo   `json:"post_mounts"`
 }
 
 type ContainerInfo struct {
 	BundlePath        string `json:"bundle_path"`
 	ImageConfigPath   string `json:"image_config_path"`
+	ImageRootfsPath   string `json:"image_rootfs_path"`
 	RuntimeConfigPath string `json:"runtime_config_path"`
+	ExternalBundle    bool   `json:"external_bundle"`
 }
 
 type MountInfo struct {

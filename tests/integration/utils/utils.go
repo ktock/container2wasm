@@ -22,6 +22,7 @@ import (
 const AssetPath = "/test/"
 const C2wBin = "c2w"
 const C2wNetProxyBin = "/opt/c2w-net-proxy.wasm"
+const ImageMounterBin = "/opt/imagemounter.wasm"
 
 type Architecture int
 
@@ -50,18 +51,26 @@ type Input struct {
 	ConvertOpts  []string
 	Architecture Architecture
 	Dockerfile   string
+	Mirror       bool
+	Store        string
+	External     bool
+}
+
+type Env struct {
+	Input   Input
+	Workdir string
 }
 
 type TestSpec struct {
 	Name           string
 	Inputs         []Input
-	Prepare        func(t *testing.T, workdir string)
-	Finalize       func(t *testing.T, workdir string)
+	Prepare        func(t *testing.T, env Env)
+	Finalize       func(t *testing.T, env Env)
 	ImageName      string // default: test.wasm
 	Runtime        string
-	RuntimeOpts    func(t *testing.T, workdir string) []string
-	Args           func(t *testing.T, workdir string) []string
-	Want           func(t *testing.T, workdir string, in io.Writer, out io.Reader)
+	RuntimeOpts    func(t *testing.T, env Env) []string
+	Args           func(t *testing.T, env Env) []string
+	Want           func(t *testing.T, env Env, in io.Writer, out io.Reader)
 	NoParallel     bool
 	IgnoreExitCode bool
 }
@@ -91,18 +100,52 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 					dcmd.Stderr = os.Stderr
 					assert.NilError(t, dcmd.Run())
 				}
+				if in.Mirror {
+					if err := exec.Command("docker", "image", "inspect", in.Image).Run(); err != nil {
+						assert.NilError(t, exec.Command("docker", "pull", in.Image).Run())
+					}
+					assert.NilError(t, exec.Command("docker", "tag", in.Image, "localhost:5000/"+in.Image).Run())
+					dcmd := exec.Command("docker", "push", "localhost:5000/"+in.Image)
+					dcmd.Stdout = os.Stdout
+					dcmd.Stderr = os.Stderr
+					assert.NilError(t, dcmd.Run())
+				}
+				if in.Store != "" {
+					waitForBuildxBuilder(t, "container")
+					if err := exec.Command("docker", "image", "inspect", in.Image).Run(); err != nil {
+						assert.NilError(t, exec.Command("docker", "pull", in.Image).Run())
+					}
+					df := filepath.Join(tmpdir, "Dockerfile-integrationtest-store")
+					tmpdest := filepath.Join(tmpdir, "Dockerfile-integrationtest-store-out.tar")
+					assert.NilError(t, os.WriteFile(df, []byte("FROM "+in.Image), 0755))
+					dcmd := exec.Command("docker", "buildx", "build", "--builder=container", "--output", "type=oci,dest="+tmpdest, "--progress=plain", "-f", df, AssetPath)
+					dcmd.Stdout = os.Stdout
+					dcmd.Stderr = os.Stderr
+					assert.NilError(t, dcmd.Run())
+
+					storeout := filepath.Join(tmpdir, in.Store)
+					assert.NilError(t, os.Mkdir(storeout, 0755))
+					assert.NilError(t, exec.Command("tar", "-C", storeout, "-xf", tmpdest).Run())
+				}
 
 				testWasm := filepath.Join(tmpdir, "test.wasm")
-				c2wCmd := exec.Command(C2wBin, append(in.ConvertOpts, "--assets="+AssetPath, in.Image, testWasm)...)
+				var convertargs []string
+				if in.Image != "" && !in.External {
+					convertargs = []string{in.Image, testWasm}
+				} else {
+					convertargs = []string{testWasm}
+				}
+				c2wCmd := exec.Command(C2wBin, append(append(in.ConvertOpts, "--assets="+AssetPath), convertargs...)...)
 				c2wCmd.Stdout = os.Stdout
 				c2wCmd.Stderr = os.Stderr
 				assert.NilError(t, c2wCmd.Run())
 
+				envInfo := Env{Input: in, Workdir: tmpdir}
 				if tt.Prepare != nil {
-					tt.Prepare(t, tmpdir)
+					tt.Prepare(t, envInfo)
 				}
 				if tt.Finalize != nil {
-					defer tt.Finalize(t, tmpdir)
+					defer tt.Finalize(t, envInfo)
 				}
 
 				targetWasm := testWasm
@@ -111,11 +154,11 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 				}
 				var runtimeOpts []string
 				if tt.RuntimeOpts != nil {
-					runtimeOpts = tt.RuntimeOpts(t, tmpdir)
+					runtimeOpts = tt.RuntimeOpts(t, envInfo)
 				}
 				var args []string
 				if tt.Args != nil {
-					args = tt.Args(t, tmpdir)
+					args = tt.Args(t, envInfo)
 				}
 				testCmd := exec.Command(tt.Runtime, append(append(runtimeOpts, targetWasm), args...)...)
 				outR, err := testCmd.StdoutPipe()
@@ -128,7 +171,7 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 
 				assert.NilError(t, testCmd.Start())
 
-				tt.Want(t, tmpdir, inW, io.TeeReader(outR, os.Stdout))
+				tt.Want(t, envInfo, inW, io.TeeReader(outR, os.Stdout))
 				inW.Close()
 
 				if !tt.IgnoreExitCode {
@@ -147,16 +190,39 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 	}
 }
 
-func WantString(wantstr string) func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
-	return func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
+func waitForBuildxBuilder(t *testing.T, builder string) {
+	tmpdir, err := os.MkdirTemp("", "testc2w")
+	assert.NilError(t, err)
+	defer func() {
+		assert.NilError(t, os.RemoveAll(tmpdir))
+	}()
+	df := filepath.Join(tmpdir, "buildxwaiter")
+	assert.NilError(t, os.WriteFile(df, []byte("FROM ubuntu:22.04"), 0755))
+	for i := 0; i < 10; i++ {
+		dcmd := exec.Command("docker", "buildx", "build", "--builder="+builder, "--progress=plain", "-f", df, tmpdir)
+		dcmd.Stdout = os.Stdout
+		dcmd.Stderr = os.Stderr
+		if err := dcmd.Run(); err != nil {
+			t.Logf("failed to access to buildkit: %v", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		t.Logf("builder working")
+		return
+	}
+	t.Fatalf("failed to launch builder (timeout)")
+}
+
+func WantString(wantstr string) func(t *testing.T, env Env, in io.Writer, out io.Reader) {
+	return func(t *testing.T, env Env, in io.Writer, out io.Reader) {
 		outstr, err := io.ReadAll(out)
 		assert.NilError(t, err)
 		assert.Equal(t, string(outstr), wantstr)
 	}
 }
 
-func WantPrompt(prompt string, inputoutput ...[2]string) func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
-	return func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
+func WantPrompt(prompt string, inputoutput ...[2]string) func(t *testing.T, env Env, in io.Writer, out io.Reader) {
+	return func(t *testing.T, env Env, in io.Writer, out io.Reader) {
 		ctx := context.TODO()
 
 		// Wait for prompt
@@ -187,9 +253,9 @@ func WantPrompt(prompt string, inputoutput ...[2]string) func(t *testing.T, work
 	}
 }
 
-func WantPromptWithWorkdir(prompt string, inputoutputFunc func(workdir string) [][2]string) func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
-	return func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
-		WantPrompt(prompt, inputoutputFunc(workdir)...)(t, workdir, in, out)
+func WantPromptWithWorkdir(prompt string, inputoutputFunc func(workdir string) [][2]string) func(t *testing.T, env Env, in io.Writer, out io.Reader) {
+	return func(t *testing.T, env Env, in io.Writer, out io.Reader) {
+		WantPrompt(prompt, inputoutputFunc(env.Workdir)...)(t, env, in, out)
 	}
 }
 
@@ -208,8 +274,8 @@ func readUntilPrompt(ctx context.Context, prompt string, outR io.Reader) (out []
 	}
 }
 
-func StringFlags(opts ...string) func(t *testing.T, workdir string) []string {
-	return func(t *testing.T, workdir string) []string { return opts }
+func StringFlags(opts ...string) func(t *testing.T, env Env) []string {
+	return func(t *testing.T, env Env) []string { return opts }
 }
 
 var usedPorts = make(map[int]struct{})
@@ -256,6 +322,30 @@ func StartHelloServer(t *testing.T) (pid int, port int) {
 	go func() {
 		if err := cmd.Wait(); err != nil {
 			t.Logf("hello server error: %v\n", err)
+		}
+		DonePort(port)
+	}()
+	for {
+		if cmd.Process != nil {
+			if _, err := http.Get(fmt.Sprintf("http://localhost:%d/", port)); err == nil {
+				break
+			}
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+	return cmd.Process.Pid, port
+}
+
+func StartDirServer(t *testing.T, dir string) (pid int, port int) {
+	port = GetPort(t)
+	t.Logf("launching server on %d", port)
+	cmd := exec.Command("httphello", fmt.Sprintf("localhost:%d", port), dir)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	assert.NilError(t, cmd.Start())
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			t.Logf("dir server error: %v\n", err)
 		}
 		DonePort(port)
 	}()

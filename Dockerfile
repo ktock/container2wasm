@@ -16,6 +16,7 @@ ARG LINUX_LOGLEVEL=7
 ARG INIT_DEBUG=true
 ARG VM_MEMORY_SIZE_MB=128
 ARG NO_VMTOUCH=
+ARG EXTERNAL_BUNDLE=
 
 ARG OUTPUT_NAME=out.wasm # for wasi
 ARG JS_OUTPUT_NAME=out # for emscripten; must not include "."
@@ -43,6 +44,7 @@ ARG TARGETPLATFORM
 ARG INIT_DEBUG
 ARG OPTIMIZATION_MODE
 ARG NO_VMTOUCH
+ARG EXTERNAL_BUNDLE
 COPY --link --from=assets / /work
 WORKDIR /work
 RUN --mount=type=cache,target=/root/.cache/go-build \
@@ -60,12 +62,16 @@ RUN mkdir -p /out/oci/rootfs /out/oci/bundle && \
     NO_VMTOUCH_F=false && \
     if test "${OPTIMIZATION_MODE}" = "native" ; then NO_VMTOUCH_F=true ; fi && \
     if test "${NO_VMTOUCH}" != "" ; then NO_VMTOUCH_F="${NO_VMTOUCH}" ; fi && \
-    create-spec --debug=${INIT_DEBUG} --debug-init=${IS_WIZER} --no-vmtouch=${NO_VMTOUCH_F} \
+    EXTERNAL_BUNDLE_F=false && \
+    if test "${EXTERNAL_BUNDLE}" = "true" ; then EXTERNAL_BUNDLE_F=true ; fi && \
+    create-spec --debug=${INIT_DEBUG} --debug-init=${IS_WIZER} --no-vmtouch=${NO_VMTOUCH_F} --external-bundle=${EXTERNAL_BUNDLE_F} \
                 --image-config-path=/oci/image.json \
                 --runtime-config-path=/oci/spec.json \
                 --rootfs-path=/oci/rootfs \
-                /oci "${TARGETPLATFORM}" /out/oci/rootfs && \
-    mv image.json spec.json /out/oci/ && mv initconfig.json /out/oci/
+                /oci "${TARGETPLATFORM}" /out/oci/rootfs
+RUN if test -f image.json; then mv image.json /out/oci/ ; fi && \
+    if test -f spec.json; then mv spec.json /out/oci/ ; fi
+RUN mv initconfig.json /out/oci/
 
 FROM ubuntu:22.04 AS gcc-riscv64-linux-gnu-base
 RUN apt-get update && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make

@@ -31,18 +31,18 @@ func TestWasmer(t *testing.T) {
 				{Image: "alpine:3.17", Architecture: utils.X86_64},
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
-			Prepare: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wasmer-mapdirtest/testdir")
+			Prepare: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wasmer-mapdirtest/testdir")
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
 				assert.NilError(t, os.WriteFile(filepath.Join(mapdirTestDir, "hi"), []byte("teststring"), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wasmer-mapdirtest/testdir")
+			Finalize: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wasmer-mapdirtest/testdir")
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				return []string{"--mapdir=/mapped/dir/test::" + filepath.Join(workdir, "wasmer-mapdirtest/testdir")}
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				return []string{"--mapdir=/mapped/dir/test::" + filepath.Join(env.Workdir, "wasmer-mapdirtest/testdir")}
 			},
 			Args: utils.StringFlags("--", "--no-stdin", "cat", "/mapped/dir/test/hi"),
 			Want: utils.WantString("teststring"),

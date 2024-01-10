@@ -39,6 +39,7 @@ func main() {
 		runtimeConfigPath = flag.String("runtime-config-path", "/oci/spec.json", "path to runtime spec config used by init during runtime")
 		imageRootfsPath   = flag.String("rootfs-path", "/oci/rootfs", "path to rootfs used as overlayfs lowerdir of container rootfs")
 		noVmtouch         = flag.Bool("no-vmtouch", false, "do not perform vmtouch")
+		externalBundle    = flag.Bool("external-bundle", false, "provide bundle externally during runtime")
 	)
 	flag.Parse()
 	args := flag.Args()
@@ -46,23 +47,37 @@ func main() {
 	platform := args[1]
 	rootfs := args[2]
 
-	p, err := platforms.Parse(platform)
-	if err != nil {
-		panic(err)
-	}
-	cfg, err := unpack(context.TODO(), imgDir, &p, rootfs)
-	if err != nil {
-		panic(err)
-	}
-	cfgD, err := io.ReadAll(cfg)
-	if err != nil {
-		panic(err)
-	}
-	if err := os.WriteFile("image.json", cfgD, 0600); err != nil {
-		panic(err)
-	}
-	if err := createSpec(bytes.NewReader(cfgD), rootfs, *debug, *debugInit, *imageConfigPath, *runtimeConfigPath, *imageRootfsPath, *noVmtouch); err != nil {
-		panic(err)
+	if !*externalBundle {
+		p, err := platforms.Parse(platform)
+		if err != nil {
+			panic(err)
+		}
+		cfg, err := unpack(context.TODO(), imgDir, &p, rootfs)
+		if err != nil {
+			panic(err)
+		}
+		cfgD, err := io.ReadAll(cfg)
+		if err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile("image.json", cfgD, 0600); err != nil {
+			panic(err)
+		}
+		if err := createSpec(bytes.NewReader(cfgD), rootfs, *debug, *debugInit, *imageConfigPath, *runtimeConfigPath, *imageRootfsPath, *noVmtouch); err != nil {
+			panic(err)
+		}
+	} else {
+		bootConfig, err := generateBootConfig(*debug, *debugInit, *imageConfigPath, *runtimeConfigPath, *imageRootfsPath, *noVmtouch, "", true)
+		if err != nil {
+			panic(err)
+		}
+		bd, err := json.Marshal(bootConfig)
+		if err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile("initconfig.json", bd, 0600); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -215,7 +230,11 @@ func createSpec(r io.Reader, rootfs string, debug bool, debugInit bool, imageCon
 	if err != nil {
 		return err
 	}
-	bootConfig, err := generateBootConfig(config, debug, debugInit, imageConfigPath, runtimeConfigPath, imageRootfsPath, noVmtouch)
+	var binfmtArch string
+	if arch := config.Architecture; arch != "riscv64" && arch != "amd64" {
+		binfmtArch = arch
+	}
+	bootConfig, err := generateBootConfig(debug, debugInit, imageConfigPath, runtimeConfigPath, imageRootfsPath, noVmtouch, binfmtArch, false)
 	if err != nil {
 		return err
 	}
@@ -301,7 +320,7 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 	return s, nil
 }
 
-func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPath, runtimeConfigPath, imageRootfsPath string, noVmtouch bool) (*inittype.BootConfig, error) {
+func generateBootConfig(debug, debugInit bool, imageConfigPath, runtimeConfigPath, imageRootfsPath string, noVmtouch bool, binfmtArch string, externalBundle bool) (*inittype.BootConfig, error) {
 	runcArgs := []string{"run", "-b", runtimeBundlePath, "foo"}
 	if debug {
 		runcArgs = append([]string{"--debug"}, runcArgs...)
@@ -322,7 +341,9 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 		Container: inittype.ContainerInfo{
 			BundlePath:        runtimeBundlePath,
 			ImageConfigPath:   imageConfigPath,
+			ImageRootfsPath:   imageRootfsPath,
 			RuntimeConfigPath: runtimeConfigPath,
+			ExternalBundle:    externalBundle,
 		},
 		Mounts: []inittype.MountInfo{
 			{
@@ -395,51 +416,56 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 					},
 				},
 			},
+		},
+	}
+	rootfsMount := inittype.MountInfo{
+		FSType: "overlay",
+		Src:    "overlay",
+		Data:   fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", imageRootfsPath, "/run/rootfs-upper", "/run/rootfs-work"),
+		Dst:    runtimeRootfsPath,
+		Dir: []inittype.DirInfo{
 			{
-				FSType: "overlay",
-				Src:    "overlay",
-				Data:   fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", imageRootfsPath, "/run/rootfs-upper", "/run/rootfs-work"),
-				Dst:    runtimeRootfsPath,
-				Dir: []inittype.DirInfo{
-					{
-						Path: runtimeRootfsPath,
-						Mode: 0755,
-					},
-					{
-						Path: "/run/rootfs-upper",
-						Mode: 0755,
-					},
-					{
-						Path: "/run/rootfs-work",
-						Mode: 0755,
-					},
-				},
-				PostDir: []inittype.DirInfo{
-					{
-						Path: "/run/rootfs/etc/",
-						Mode: 0644,
-					},
-					{
-						Path: "/run/rootfs/etc/",
-						Mode: 0644,
-					},
-				},
-				PostFile: []inittype.FileInfo{
-					{
-						Path:     "/run/rootfs/etc/hosts",
-						Mode:     0644,
-						Contents: "127.0.0.1	localhost\n",
-					},
-					{
-						Path:     "/run/rootfs/etc/resolv.conf",
-						Mode:     0644,
-						Contents: "",
-					},
-				},
+				Path: runtimeRootfsPath,
+				Mode: 0755,
+			},
+			{
+				Path: "/run/rootfs-upper",
+				Mode: 0755,
+			},
+			{
+				Path: "/run/rootfs-work",
+				Mode: 0755,
+			},
+		},
+		PostDir: []inittype.DirInfo{
+			{
+				Path: "/run/rootfs/etc/",
+				Mode: 0644,
+			},
+			{
+				Path: "/run/rootfs/etc/",
+				Mode: 0644,
+			},
+		},
+		PostFile: []inittype.FileInfo{
+			{
+				Path:     "/run/rootfs/etc/hosts",
+				Mode:     0644,
+				Contents: "127.0.0.1	localhost\n",
+			},
+			{
+				Path:     "/run/rootfs/etc/resolv.conf",
+				Mode:     0644,
+				Contents: "",
 			},
 		},
 	}
-	if arch := config.Architecture; arch != "riscv64" && arch != "amd64" {
+	if externalBundle {
+		bootConfig.PostMounts = append(bootConfig.PostMounts, rootfsMount) // mount rootfs after bundle is provided
+	} else {
+		bootConfig.Mounts = append(bootConfig.Mounts, rootfsMount) // mount embedded rootfs as soon as possible
+	}
+	if binfmtArch != "" {
 		procfsPos, found := 0, false
 		for i, m := range bootConfig.Mounts {
 			if m.FSType == "proc" {
@@ -456,7 +482,7 @@ func generateBootConfig(config spec.Image, debug, debugInit bool, imageConfigPat
 			FSType: "binfmt_misc",
 			Src:    "binfmt_misc",
 			Dst:    "/proc/sys/fs/binfmt_misc",
-			Cmd:    []string{"binfmt", "--install", arch},
+			Cmd:    []string{"binfmt", "--install", binfmtArch},
 		})
 		newMountInfo = append(newMountInfo, bootConfig.Mounts[procfsPos+1:]...)
 		bootConfig.Mounts = newMountInfo

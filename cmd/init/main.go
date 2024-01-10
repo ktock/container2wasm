@@ -57,42 +57,23 @@ func doInit() error {
 	} else {
 		log.SetOutput(io.Discard)
 	}
-	imageD, err := os.ReadFile(cfg.Container.ImageConfigPath)
-	if err != nil {
-		return err
-	}
 	var imageConfig imagespec.Image
-	if err := json.Unmarshal(imageD, &imageConfig); err != nil {
-		return err
-	}
-
-	var wg sync.WaitGroup
-	for _, m := range cfg.Mounts {
-		if m.Async {
-			m := m
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := mount(m); err != nil {
-					if m.Optional {
-						log.Printf("failed optional mount %+v: %v", m, err)
-					} else {
-						panic(err)
-					}
-				}
-			}()
-		} else {
-			if err := mount(m); err != nil {
-				if m.Optional {
-					log.Printf("failed optional mount %+v: %v", m, err)
-				} else {
-					return err
-				}
-			}
+	var externalBundle bool
+	if cfg.Container.ExternalBundle {
+		externalBundle = true
+	} else {
+		imageD, err := os.ReadFile(cfg.Container.ImageConfigPath)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(imageD, &imageConfig); err != nil {
+			return err
 		}
 	}
 
-	wg.Wait()
+	if err := mountAll(cfg.Mounts); err != nil {
+		return err
+	}
 
 	// WASI-related filesystems
 	for _, tag := range []string{rootFSTag, packFSTag} {
@@ -106,13 +87,15 @@ func doInit() error {
 			break
 		}
 	}
-	specD, err := os.ReadFile(cfg.Container.RuntimeConfigPath)
-	if err != nil {
-		return err
-	}
 	var s runtimespec.Spec
-	if err := json.Unmarshal(specD, &s); err != nil {
-		return err
+	if !externalBundle {
+		specD, err := os.ReadFile(cfg.Container.RuntimeConfigPath)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(specD, &s); err != nil {
+			return err
+		}
 	}
 	for _, cmd := range cfg.CmdPreRun {
 		log.Printf("executing(pre-run): %+v\n", cmd)
@@ -157,24 +140,14 @@ func doInit() error {
 		return err
 	}
 	log.Printf("INFO:\n%s\n", string(infoD))
-	var withNet bool
-	var mac string
-	s, withNet, mac = patchSpec(s, infoD, imageConfig)
-	log.Printf("Running: %+v\n", s.Process.Args)
-	sd, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(cfg.Container.BundlePath, "config.json"), sd, 0600); err != nil {
-		return err
-	}
+	info := parseInfo(infoD)
 
-	if withNet {
-		if mac != "" {
+	if info.withNet {
+		if info.mac != "" {
 			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "down").CombinedOutput(); err != nil {
 				return fmt.Errorf("failed eth0 down: %v: %w", string(o), err)
 			}
-			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "address", mac).CombinedOutput(); err != nil {
+			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "address", info.mac).CombinedOutput(); err != nil {
 				return fmt.Errorf("failed change mac address of eth0: %v: %w", string(o), err)
 			}
 		}
@@ -187,6 +160,78 @@ func doInit() error {
 			o2, _ := exec.Command("ip", "a").CombinedOutput()
 			log.Printf("finished udhcpc: %s\n %s\n", string(o), string(o2))
 		}
+	}
+
+	if externalBundle {
+		if info.bundle == "" {
+			return fmt.Errorf("neither of embedded image nor external bundle is provided")
+		}
+		if !info.withNet {
+			return fmt.Errorf("networking must be enabled")
+		}
+
+		// mount bundle
+		addr, ok := strings.CutPrefix(info.bundle, "9p=")
+		if !ok {
+			return fmt.Errorf("unsupported external bundle %q", info.bundle)
+		}
+
+		bundle9pPath := "/run/9pbundle"
+		bundle9pSpecPath := filepath.Join(bundle9pPath, "config", "config.json")
+		bundle9pImageConfigPath := filepath.Join(bundle9pPath, "config", "imageconfig.json")
+
+		if err := os.MkdirAll(bundle9pPath, os.FileMode(0755)); err != nil {
+			return fmt.Errorf("failed to create %q: %w", bundle9pPath, err)
+		}
+		if err := syscall.Mount(addr, bundle9pPath, "9p", 0, "trans=tcp,version=9p2000.L,msize=5000000,port=80,cache=loose,ro"); err != nil {
+			return fmt.Errorf("failed mounting oci %v", err)
+		}
+
+		// make bundle usable
+		// TODO: ovrelay mount /run/bundle/rootfs directly to /run/rootfs
+		if cfg.Container.ImageRootfsPath == "" {
+			return fmt.Errorf("specify image rootfs path")
+		}
+		if err := os.MkdirAll(cfg.Container.ImageRootfsPath, os.FileMode(0755)); err != nil {
+			return fmt.Errorf("failed to create %q: %w", cfg.Container.ImageRootfsPath, err)
+		}
+		if err := syscall.Mount(filepath.Join(bundle9pPath, "rootfs"), cfg.Container.ImageRootfsPath, "", syscall.MS_BIND, ""); err != nil {
+			return fmt.Errorf("cannot bind mount 9p rootfs to %q: %w", cfg.Container.ImageRootfsPath, err)
+		}
+
+		// parse config
+		f, err := os.Open(bundle9pSpecPath)
+		if err != nil {
+			return fmt.Errorf("failed to open spec file: %v", err)
+		}
+		if err := json.NewDecoder(f).Decode(&s); err != nil {
+			return err
+		}
+		f.Close()
+		f, err = os.Open(bundle9pImageConfigPath)
+		if err != nil {
+			return fmt.Errorf("failed to open image config file: %v", err)
+		}
+		if err := json.NewDecoder(f).Decode(&imageConfig); err != nil {
+			return err
+		}
+		f.Close()
+	}
+
+	if err := mountAll(cfg.PostMounts); err != nil {
+		return err
+	}
+
+	s = patchSpec(s, info, imageConfig)
+	log.Printf("Running: %+v\n", s.Process.Args)
+	sd, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(cfg.Container.BundlePath, "config.json"), sd, 0600); err != nil {
+		return err
+	}
+	if info.withNet {
 		for _, f := range []string{"/etc/hosts", "/etc/resolv.conf"} {
 			if err := syscall.Mount(f, filepath.Join("/run/rootfs", f), "", syscall.MS_BIND, ""); err != nil {
 				return fmt.Errorf("cannot mount %q: %w", f, err)
@@ -266,12 +311,58 @@ func mount(m inittype.MountInfo) error {
 	return nil
 }
 
+func mountAll(mounts []inittype.MountInfo) error {
+	if len(mounts) == 0 {
+		return nil
+	}
+	var wg sync.WaitGroup
+	for _, m := range mounts {
+		if m.Async {
+			m := m
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := mount(m); err != nil {
+					if m.Optional {
+						log.Printf("failed optional mount %+v: %v", m, err)
+					} else {
+						panic(err)
+					}
+				}
+			}()
+		} else {
+			if err := mount(m); err != nil {
+				if m.Optional {
+					log.Printf("failed optional mount %+v: %v", m, err)
+				} else {
+					return err
+				}
+			}
+		}
+	}
+
+	wg.Wait()
+
+	return nil
+}
+
 var (
 	delimLines = regexp.MustCompile(`[^\\]\n`)
 	delimArgs  = regexp.MustCompile(`[^\\] `)
 )
 
-func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_ runtimespec.Spec, withNet bool, mac string) {
+type runtimeFlags struct {
+	mounts     []runtimespec.Mount
+	env        []string
+	entrypoint []string
+	args       []string
+
+	withNet bool
+	mac     string
+	bundle  string
+}
+
+func parseInfo(infoD []byte) (info runtimeFlags) {
 	var options []string
 	lmchs := delimLines.FindAllIndex(infoD, -1)
 	prev := 0
@@ -282,8 +373,6 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_
 		prev = m[1]
 	}
 	options = append(options, strings.ReplaceAll(string(infoD[prev:]), "\\\n", "\n"))
-	var entrypoint []string
-	var args []string
 	for _, l := range options {
 		elms := strings.SplitN(l, ":", 2)
 		if len(elms) != 2 {
@@ -297,7 +386,7 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_
 				// no path is specified; nop
 				continue
 			}
-			s.Mounts = append(s.Mounts, runtimespec.Mount{
+			info.mounts = append(info.mounts, runtimespec.Mount{
 				Type:        "bind",
 				Source:      filepath.Join("/mnt/wasi0", o),
 				Destination: filepath.Join("/", o), // TODO: ensure not outside of "/"
@@ -305,39 +394,49 @@ func patchSpec(s runtimespec.Spec, infoD []byte, imageConfig imagespec.Image) (_
 			})
 			log.Printf("Prepared mount wasi0 => %q", o)
 		case "c":
-			args = nil
+			info.args = nil
 			mchs := delimArgs.FindAllIndex([]byte(o), -1)
 			prev := 0
 			for _, m := range mchs {
 				s := m[0] + 1
 				// spaces are quoted so we restore them here
-				args = append(args, strings.ReplaceAll(string(o[prev:s]), "\\ ", " "))
+				info.args = append(info.args, strings.ReplaceAll(string(o[prev:s]), "\\ ", " "))
 				prev = m[1]
 			}
-			args = append(args, strings.ReplaceAll(string(o[prev:]), "\\ ", " "))
+			info.args = append(info.args, strings.ReplaceAll(string(o[prev:]), "\\ ", " "))
 		case "e":
-			entrypoint = []string{o}
+			info.entrypoint = []string{o}
 		case "env":
-			s.Process.Env = append(s.Process.Env, o)
+			info.env = append(info.env, o)
 		case "n":
-			withNet = true // TODO: check mode (e.g. dhcp, ...)
-			mac = o
+			info.withNet = true // TODO: check mode (e.g. dhcp, ...)
+			info.mac = o
 		case "t":
 			if o != "" {
 				if err := exec.Command("date", "+%s", "-s", "@"+o).Run(); err != nil {
 					log.Printf("failed setting date: %v", err) // TODO: return error
 				}
 			}
+		case "b":
+			info.bundle = o
 		default:
 			log.Printf("unsupported prefix: %q", inst)
 		}
 	}
+	return
+}
+
+func patchSpec(s runtimespec.Spec, info runtimeFlags, imageConfig imagespec.Image) runtimespec.Spec {
+	s.Mounts = append(s.Mounts, info.mounts...)
+	s.Process.Env = append(s.Process.Env, info.env...)
+	entrypoint := info.entrypoint
 	if len(entrypoint) == 0 {
 		entrypoint = imageConfig.Config.Entrypoint
 	}
+	args := info.args
 	if len(args) == 0 {
 		args = imageConfig.Config.Cmd
 	}
 	s.Process.Args = append(entrypoint, args...)
-	return s, withNet, mac
+	return s
 }

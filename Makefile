@@ -21,6 +21,9 @@ c2w-net:
 c2w-net-proxy.wasm:
 	cd extras/c2w-net-proxy/ ; GOOS=wasip1 GOARCH=wasm go build -o $(PREFIX)/c2w-net-proxy.wasm .
 
+imagemounter.wasm:
+	cd extras/imagemounter ; GOOS=wasip1 GOARCH=wasm go build -o $(PREFIX)/imagemounter.wasm .
+
 install:
 	install -D -m 755 $(PREFIX)/c2w $(CMD_DESTDIR)/bin
 	install -D -m 755 $(PREFIX)/c2w-net $(CMD_DESTDIR)/bin

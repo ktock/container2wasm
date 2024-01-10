@@ -431,6 +431,26 @@ int write_net(FSVirtFile *f, int pos1, const char *mac)
   return pos - pos1;
 }
 
+int write_bundle(FSVirtFile *f, int pos1, const char *bundle)
+{
+  int p, pos = pos1;
+
+  p = write_info(f, pos, 3, "b: ");
+  if (p < 0) {
+    return -1;
+  }
+  pos += p;
+  for (int j = 0; j < strlen(bundle); j++) {
+    if (putchar_info(f, pos++, bundle[j]) != 1) {
+      return -1;
+    }
+  }
+  if (putchar_info(f, pos++, '\n') != 1) {
+    return -1;
+  }
+  return pos - pos1;
+}
+
 int write_time(FSVirtFile *f, int pos1, const char *timestr)
 {
   int p, pos = pos1;
@@ -457,6 +477,7 @@ static struct option options[] = {
     { "entrypoint", required_argument },
     { "net", required_argument },
     { "mac", required_argument },
+    { "external-bundle", required_argument },
     { NULL },
 };
 
@@ -466,10 +487,11 @@ void print_usage(void)
           "  [COMMAND] [ARG...]: command to run in the container. (default: commands specified in the image config)\n"
           "\n"
           "OPTIONS:\n"
-          "  -entrypoint <command>: entrypoint command. (default: entrypoint specified in the image config)\n"
-          "  -no-stdin            : disable stdin. (default: false)\n"
-          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"socket\")\n"
-          "  -mac <mac address>   : use a custom mac address for the VM\n"
+          "  -entrypoint <command>     : entrypoint command. (default: entrypoint specified in the image config)\n"
+          "  -no-stdin                 : disable stdin. (default: false)\n"
+          "  -net <mode>               : enable networking with the specified mode (default: disabled. supported mode: \"socket\")\n"
+          "  -mac <mac address>        : use a custom mac address for the VM\n"
+          "  -external-bundle <address>: externally mount container bundle\n"
           "\n"
           "This tool is based on Bochs emulator.\n"
           );
@@ -485,7 +507,7 @@ int init_vm(int argc, char **argv, FSVirtFile *info)
     info->lim = 1024;
 
     /* const char *cmdline, *build_preload_file; */
-    char *entrypoint = NULL, *net = NULL, *mac = NULL;
+    char *entrypoint = NULL, *net = NULL, *mac = NULL, *bundle = NULL;
     bool enable_stdin = true;
     int pos, c, option_index, i;
     for(;;) {
@@ -509,6 +531,9 @@ int init_vm(int argc, char **argv, FSVirtFile *info)
                 break;
             case 4: /* mac */
                 mac = optarg;
+                break;
+            case 5: /* external-bundle */
+                bundle = optarg;
                 break;
             default:
                 fprintf(stderr, "unknown option index: %d\n", option_index);
@@ -575,6 +600,15 @@ int init_vm(int argc, char **argv, FSVirtFile *info)
         }
       }
       int p = write_net(info, pos, mac);
+      if (p < 0) {
+        printf("failed to prepare net info\n");
+        exit(1);
+      }
+      pos += p;
+    }
+
+    if (bundle != NULL) {
+      int p = write_bundle(info, pos, bundle);
       if (p < 0) {
         printf("failed to prepare net info\n");
         exit(1);

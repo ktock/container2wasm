@@ -21,8 +21,8 @@ func TestWamr(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(env.Workdir, "test2.wasm"), filepath.Join(env.Workdir, "test.wasm")).Run())
 			},
 			Args: utils.StringFlags("echo", "-n", "hello"),
 			Want: utils.WantString("hello"),
@@ -35,8 +35,8 @@ func TestWamr(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(env.Workdir, "test2.wasm"), filepath.Join(env.Workdir, "test.wasm")).Run())
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ", [2]string{"echo -n hello\n", "hello"}),
@@ -49,22 +49,22 @@ func TestWamr(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
-				mapdirTestDir := filepath.Join(workdir, "wamr-mapdirtest/testdir")
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(env.Workdir, "test2.wasm"), filepath.Join(env.Workdir, "test.wasm")).Run())
+				mapdirTestDir := filepath.Join(env.Workdir, "wamr-mapdirtest/testdir")
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
 				assert.NilError(t, os.WriteFile(filepath.Join(mapdirTestDir, "hi"), []byte("teststring"), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wamr-mapdirtest/testdir")
+			Finalize: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wamr-mapdirtest/testdir")
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				return []string{"--dir=" + filepath.Join(workdir, "wamr-mapdirtest/testdir")}
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				return []string{"--dir=" + filepath.Join(env.Workdir, "wamr-mapdirtest/testdir")}
 			},
-			Args: func(t *testing.T, workdir string) []string {
-				return []string{"cat", filepath.Join(workdir, "wamr-mapdirtest/testdir/hi")}
+			Args: func(t *testing.T, env utils.Env) []string {
+				return []string{"cat", filepath.Join(env.Workdir, "wamr-mapdirtest/testdir/hi")}
 			},
 			Want: utils.WantString("teststring"),
 		},
@@ -76,8 +76,8 @@ func TestWamr(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(env.Workdir, "test2.wasm"), filepath.Join(env.Workdir, "test.wasm")).Run())
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ",
@@ -93,14 +93,14 @@ func TestWamr(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
-				mapdirTestDir := filepath.Join(workdir, "wamr-mapdirtest-io")
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(env.Workdir, "test2.wasm"), filepath.Join(env.Workdir, "test.wasm")).Run())
+				mapdirTestDir := filepath.Join(env.Workdir, "wamr-mapdirtest-io")
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
 				assert.NilError(t, os.WriteFile(filepath.Join(mapdirTestDir, "hi"), []byte("teststring"), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wamr-mapdirtest-io")
+			Finalize: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wamr-mapdirtest-io")
 
 				// check data from guest
 				data, err := os.ReadFile(filepath.Join(mapdirTestDir, "from-guest", "testhello"))
@@ -113,8 +113,8 @@ func TestWamr(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				return []string{"--dir=" + filepath.Join(workdir, "wamr-mapdirtest-io")}
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				return []string{"--dir=" + filepath.Join(env.Workdir, "wamr-mapdirtest-io")}
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPromptWithWorkdir("/ # ",
@@ -135,8 +135,8 @@ func TestWamr(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(workdir, "test2.wasm"), filepath.Join(workdir, "test.wasm")).Run())
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wamrc", "-o", filepath.Join(env.Workdir, "test2.wasm"), filepath.Join(env.Workdir, "test.wasm")).Run())
 			},
 			RuntimeOpts: utils.StringFlags("--env=AAA=hello", "--env=BBB=world"),
 			Args:        utils.StringFlags("/bin/sh", "-c", "echo -n $AAA $BBB"),
