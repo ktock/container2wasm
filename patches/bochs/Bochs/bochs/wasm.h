@@ -551,6 +551,7 @@ struct EthernetDevice {
     uint8_t mac_addr[6]; /* mac address of the interface */
     void (*write_packet)(EthernetDevice *net,
                          const uint8_t *buf, int len);
+    uint8_t * (*alloc_packet)(EthernetDevice *net, int len);
     void *opaque;
     bx_virtio_net_ctrl_c *virtio_device;
     void (*select_fill)(EthernetDevice *net, int *pfd_max,

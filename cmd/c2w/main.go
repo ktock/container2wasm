@@ -66,6 +66,10 @@ func main() {
 			Name:  "legacy",
 			Usage: "Use \"docker build\" instead of buildx (no support for assets flag)",
 		},
+		cli.BoolFlag{
+			Name:  "external-bundle",
+			Usage: "Do not embed container image to the Wasm image but mount it during runtime",
+		},
 	}, flags...)
 	app.Action = rootAction
 	if err := app.Run(os.Args); err != nil {
@@ -80,9 +84,22 @@ func rootAction(clicontext *cli.Context) error {
 		fmt.Printf("\n")
 		return nil
 	}
-	srcImgName := clicontext.Args().First()
-	if srcImgName == "" {
-		return fmt.Errorf("specify image name")
+	arg1 := clicontext.Args().First()
+	if arg1 == "" {
+		if clicontext.Bool("external-bundle") {
+			return fmt.Errorf("specify output image name")
+		} else {
+			return fmt.Errorf("specify image name")
+		}
+	}
+	var outputPath string
+	if clicontext.Bool("external-bundle") {
+		outputPath = arg1
+		if clicontext.Args().Get(1) != "" {
+			return fmt.Errorf("command receives only 1 arg (output image path) with external-bundle")
+		}
+	} else {
+		outputPath = clicontext.Args().Get(1)
 	}
 	builderPath, err := exec.LookPath(clicontext.String("builder"))
 	if err != nil {
@@ -100,8 +117,8 @@ func rootAction(clicontext *cli.Context) error {
 	if clicontext.Bool("to-js") {
 		destFile = ""
 	}
-	if o := clicontext.Args().Get(1); o != "" {
-		d, f := filepath.Split(o)
+	if outputPath != "" {
+		d, f := filepath.Split(outputPath)
 		destDir, err = filepath.Abs(d)
 		if err != nil {
 			return err
@@ -113,28 +130,34 @@ func rootAction(clicontext *cli.Context) error {
 	if clicontext.Bool("to-js") && destFile != "" {
 		return fmt.Errorf("output destination must be a slash-terminated directory path when using \"to-js\" option")
 	}
-	if legacy {
-		return buildWithLegacyBuilder(builderPath, srcImgName, destDir, destFile, clicontext)
+	if a := clicontext.String("assets"); a != "" && legacy {
+		return fmt.Errorf("\"assets\" unsupported on docker build as of now; install docker buildx instead")
 	}
 
-	return build(builderPath, srcImgName, destDir, destFile, clicontext)
-}
-
-func build(builderPath string, srcImgName string, destDir, destFile string, clicontext *cli.Context) error {
+	srcImgName := arg1
 	tmpdir, err := os.MkdirTemp("", "container2wasm")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmpdir)
-
 	srcImgPath := filepath.Join(tmpdir, "img")
 	if err := os.Mkdir(srcImgPath, 0755); err != nil {
 		return err
 	}
-	if err := prepareSourceImg(builderPath, srcImgName, srcImgPath, clicontext.String("target-arch")); err != nil {
-		return fmt.Errorf("failed to prepare image: %w", err)
+	if !clicontext.Bool("external-bundle") {
+		if err := prepareSourceImg(builderPath, srcImgName, srcImgPath, clicontext.String("target-arch")); err != nil {
+			return fmt.Errorf("failed to prepare image: %w", err)
+		}
 	}
 
+	if legacy {
+		return buildWithLegacyBuilder(builderPath, srcImgPath, destDir, destFile, clicontext)
+	}
+
+	return build(builderPath, srcImgPath, destDir, destFile, clicontext)
+}
+
+func build(builderPath string, srcImgPath string, destDir, destFile string, clicontext *cli.Context) error {
 	buildxArgs := []string{
 		"buildx", "build", "--progress=plain",
 		"--build-arg", fmt.Sprintf("TARGETARCH=%s", clicontext.String("target-arch")),
@@ -145,11 +168,15 @@ func build(builderPath string, srcImgName string, destDir, destFile string, clic
 	if o := clicontext.String("dockerfile"); o != "" {
 		dockerfilePath = o
 	} else {
-		df := filepath.Join(tmpdir, "Dockerfile")
-		if err := os.WriteFile(df, vendor.Dockerfile, 0600); err != nil {
+		f, err := os.CreateTemp("", "container2wasm")
+		if err != nil {
 			return err
 		}
-		dockerfilePath = df
+		defer os.Remove(f.Name())
+		if _, err := f.Write(vendor.Dockerfile); err != nil {
+			return err
+		}
+		dockerfilePath = f.Name()
 	}
 	buildxArgs = append(buildxArgs, "-f", dockerfilePath)
 	if o := clicontext.String("assets"); o != "" {
@@ -173,6 +200,9 @@ func build(builderPath string, srcImgName string, destDir, destFile string, clic
 		"--build-arg", fmt.Sprintf("LINUX_LOGLEVEL=%d", linuxLogLevel),
 		"--build-arg", fmt.Sprintf("INIT_DEBUG=%v", initDebug),
 	)
+	if clicontext.Bool("external-bundle") {
+		buildxArgs = append(buildxArgs, "--build-arg", "EXTERNAL_BUNDLE=true")
+	}
 	for _, a := range clicontext.StringSlice("build-arg") {
 		buildxArgs = append(buildxArgs, "--build-arg", a)
 	}
@@ -185,24 +215,7 @@ func build(builderPath string, srcImgName string, destDir, destFile string, clic
 	return cmd.Run()
 }
 
-func buildWithLegacyBuilder(builderPath string, srcImgName, destDir, destFile string, clicontext *cli.Context) error {
-	if o := clicontext.String("assets"); o != "" {
-		return fmt.Errorf("\"assets\" unsupported on docker build as of now; install docker buildx instead")
-	}
-	tmpdir, err := os.MkdirTemp("", "container2wasm")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmpdir)
-
-	srcImgPath := filepath.Join(tmpdir, "img")
-	if err := os.Mkdir(srcImgPath, 0755); err != nil {
-		return err
-	}
-	if err := prepareSourceImg(builderPath, srcImgName, srcImgPath, clicontext.String("target-arch")); err != nil {
-		return fmt.Errorf("failed to prepare image: %w", err)
-	}
-
+func buildWithLegacyBuilder(builderPath string, srcImgPath, destDir, destFile string, clicontext *cli.Context) error {
 	buildArgs := []string{
 		"build", "--progress=plain",
 		"--platform=linux/amd64",
@@ -212,11 +225,15 @@ func buildWithLegacyBuilder(builderPath string, srcImgName, destDir, destFile st
 	if o := clicontext.String("dockerfile"); o != "" {
 		dockerfilePath = o
 	} else {
-		df := filepath.Join(tmpdir, "Dockerfile")
-		if err := os.WriteFile(df, vendor.Dockerfile, 0600); err != nil {
+		f, err := os.CreateTemp("", "container2wasm")
+		if err != nil {
 			return err
 		}
-		dockerfilePath = df
+		defer os.Remove(f.Name())
+		if _, err := f.Write(vendor.Dockerfile); err != nil {
+			return err
+		}
+		dockerfilePath = f.Name()
 	}
 	buildArgs = append(buildArgs, "-f", dockerfilePath)
 	if clicontext.Bool("to-js") {
@@ -237,6 +254,9 @@ func buildWithLegacyBuilder(builderPath string, srcImgName, destDir, destFile st
 		"--build-arg", fmt.Sprintf("LINUX_LOGLEVEL=%d", linuxLogLevel),
 		"--build-arg", fmt.Sprintf("INIT_DEBUG=%v", initDebug),
 	)
+	if clicontext.Bool("external-bundle") {
+		buildArgs = append(buildArgs, "--build-arg", "EXTERNAL_BUNDLE=true")
+	}
 	for _, a := range clicontext.StringSlice("build-arg") {
 		buildArgs = append(buildArgs, "--build-arg", a)
 	}

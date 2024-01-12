@@ -21,8 +21,8 @@ func TestWasmedge(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(env.Workdir, "test.wasm"), filepath.Join(env.Workdir, "test2.wasm")).Run())
 			},
 			Args: utils.StringFlags("--no-stdin", "echo", "-n", "hello"), // NOTE: stdin unsupported on wasmedge as of now
 			Want: utils.WantString("hello"),
@@ -37,20 +37,20 @@ func TestWasmedge(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(env.Workdir, "test.wasm"), filepath.Join(env.Workdir, "test2.wasm")).Run())
 
-				mapdirTestDir := filepath.Join(workdir, "wasmedge-mapdirtest/testdir")
+				mapdirTestDir := filepath.Join(env.Workdir, "wasmedge-mapdirtest/testdir")
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
 				assert.NilError(t, os.WriteFile(filepath.Join(mapdirTestDir, "hi"), []byte("teststring"), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wasmedge-mapdirtest/testdir")
+			Finalize: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wasmedge-mapdirtest/testdir")
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				return []string{"--dir=/map/dir:" + filepath.Join(workdir, "wasmedge-mapdirtest/testdir")}
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				return []string{"--dir=/map/dir:" + filepath.Join(env.Workdir, "wasmedge-mapdirtest/testdir")}
 			},
 			Args: utils.StringFlags("--no-stdin", "cat", "/map/dir/hi"),
 			Want: utils.WantString("teststring"),
@@ -63,8 +63,8 @@ func TestWasmedge(t *testing.T) {
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
 			ImageName: "test2.wasm",
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(workdir, "test.wasm"), filepath.Join(workdir, "test2.wasm")).Run())
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, exec.Command("wasmedgec", filepath.Join(env.Workdir, "test.wasm"), filepath.Join(env.Workdir, "test2.wasm")).Run())
 			},
 			RuntimeOpts: utils.StringFlags("--env=AAA=hello", "--env=BBB=world"),
 			Args:        utils.StringFlags("--no-stdin", "/bin/sh", "-c", "echo -n $AAA $BBB"), // NOTE: stdin unsupported on wasmedge as of now

@@ -310,6 +310,7 @@ Re-compilation (and possibe re-implementation) of the application is needed.
 
 - [`./examples/`](./examples): Examples (python, php, on-browser, networking, etc.)
 - `vscode-container-wasm`: VSCode extension for running containers on VSCode on browser (e.g. `github.dev`), leveraging container2wasm: https://github.com/ktock/vscode-container-wasm
+- [`./extras/imagemounter`]: A helper tool for enabling to distributing and running container images on browser without pre-conversion of the images.
 
 ## Acknowledgement
 

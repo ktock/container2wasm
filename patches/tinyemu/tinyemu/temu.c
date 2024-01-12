@@ -956,6 +956,7 @@ static struct option options[] = {
     { "entrypoint", required_argument },
     { "net", required_argument },
     { "mac", required_argument },
+    { "external-bundle", required_argument },
 // The following flags are unsupported as of now:
 //    { "ctrlc", no_argument },
 //    { "rw", no_argument },
@@ -972,10 +973,11 @@ void help(void)
           "  [COMMAND] [ARG...]: command to run in the container. (default: commands specified in the image config)\n"
           "\n"
           "OPTIONS:\n"
-          "  -entrypoint <command>: entrypoint command. (default: entrypoint specified in the image config)\n"
-          "  -no-stdin            : disable stdin. (default: false)\n"
-          "  -net <mode>          : enable networking with the specified mode (default: disabled. supported mode: \"socket\")\n"
-          "  -mac <mac address>   : use a custom mac address for the VM\n"
+          "  -entrypoint <command>     : entrypoint command. (default: entrypoint specified in the image config)\n"
+          "  -no-stdin                 : disable stdin. (default: false)\n"
+          "  -net <mode>               : enable networking with the specified mode (default: disabled. supported mode: \"socket\")\n"
+          "  -mac <mac address>        : use a custom mac address for the VM\n"
+          "  -external-bundle <address>: externally mount container bundle\n"
           "\n"
           "This tool is based on:\n"
           "temu version 2019-12-21, Copyright (c) 2016-2018 Fabrice Bellard\n"
@@ -1273,6 +1275,26 @@ int write_net(FSVirtFile *f, int pos1, const char *mac)
   return pos - pos1;
 }
 
+int write_bundle(FSVirtFile *f, int pos1, const char *bundle)
+{
+  int p, pos = pos1;
+
+  p = write_info(f, pos, 3, "b: ");
+  if (p < 0) {
+    return -1;
+  }
+  pos += p;
+  for (int j = 0; j < strlen(bundle); j++) {
+    if (putchar_info(f, pos++, bundle[j]) != 1) {
+      return -1;
+    }
+  }
+  if (putchar_info(f, pos++, '\n') != 1) {
+    return -1;
+  }
+  return pos - pos1;
+}
+
 int write_time(FSVirtFile *f, int pos1, const char *timestr)
 {
   int p, pos = pos1;
@@ -1303,7 +1325,7 @@ int main(int argc, char **argv)
 #endif
 
     /* const char *cmdline, *build_preload_file; */
-    char *entrypoint = NULL, *net = NULL, *mac = NULL;
+    char *entrypoint = NULL, *net = NULL, *mac = NULL, *bundle = NULL;
     int pos, c, option_index, i, enable_stdin = TRUE;
     for(;;) {
         c = getopt_long_only(argc, argv, "+h", options, &option_index);
@@ -1326,6 +1348,9 @@ int main(int argc, char **argv)
                 break;
             case 4: /* mac */
                 mac = optarg;
+                break;
+            case 5: /* external-bundle */
+                bundle = optarg;
                 break;
             default:
                 fprintf(stderr, "unknown option index: %d\n", option_index);
@@ -1390,6 +1415,15 @@ int main(int argc, char **argv)
         }
       }
       int p = write_net(info, pos, mac);
+      if (p < 0) {
+        printf("failed to prepare net info\n");
+        exit(1);
+      }
+      pos += p;
+    }
+
+    if (bundle != NULL) {
+      int p = write_bundle(info, pos, bundle);
       if (p < 0) {
         printf("failed to prepare net info\n");
         exit(1);

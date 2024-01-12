@@ -3028,7 +3028,7 @@ void bx_virtio_net_ctrl_c::rx_timer_handler(void *this_ptr)
     if (watch_res < 0) {
       duration = 1000000;
     } else if (n_ret <= 0) {
-      duration = 100000;
+      duration = 5000;
     }
     bx_pc_system.activate_timer(class_ptr->timer_id, duration, false); /* not continuous */
 }
@@ -3046,7 +3046,7 @@ int bx_virtio_net_ctrl_c::device_recv(int queue_idx, int desc_idx, int read_size
         if (memcpy_from_queue(&h, queue_idx, desc_idx, 0, s1->header_size) < 0)
             return 0;
         len = read_size - s1->header_size;
-        buf = (uint8_t *)malloc(len);
+        buf = es->alloc_packet(es, len);
         memcpy_from_queue(buf, queue_idx, desc_idx, s1->header_size, len);
         es->write_packet(es, buf, len);
         free(buf);
@@ -3075,25 +3075,27 @@ static void socket_write_packet(EthernetDevice *net,
                                const uint8_t *buf, int len)
 {
     SocketState *s = (SocketState *)net->opaque;
-    uint32_t size = htonl(len);
+    // uint32_t size = htonl(len);
     int ret;
 
     if (s->fd < 0) {
       return;
     }
 
-    ret = send(s->fd, &size, 4, 0); // TODO: check error
+    ret = send(s->fd, buf - 4, len + 4, 0); // TODO: check error
     if (ret < 0) {
       close(s->fd);
       s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
       return;
     }
-    ret = send(s->fd, buf, len, 0); // TODO: check error
-    if (ret < 0) {
-      close(s->fd);
-      s->fd = -1; // invalid fd. hopefully the watch loop will recover this.
-      return;
-    }
+}
+
+static uint8_t * socket_alloc_packet(EthernetDevice *net, int len)
+{
+  uint8_t * buf = (uint8_t *)malloc(len + 4);
+  uint32_t size = htonl(len);
+  put_le32(buf, size);
+  return &buf[4];
 }
 
 static int try_get_fd(SocketState *s);
@@ -3213,6 +3215,7 @@ static EthernetDevice *socket_net_init()
     s->tmpfd = -1;
     s->enabled = false;
     net->opaque = s;
+    net->alloc_packet = socket_alloc_packet;
     net->write_packet = socket_write_packet;
     net->select_fill = socket_select_fill1;
     net->select_poll = socket_select_poll1;

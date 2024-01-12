@@ -44,19 +44,19 @@ func TestWazero(t *testing.T) {
 				{Image: "alpine:3.17", Architecture: utils.X86_64},
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
-			Prepare: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wazero-mapdirtest/testdir")
+			Prepare: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wazero-mapdirtest/testdir")
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
 				assert.NilError(t, os.WriteFile(filepath.Join(mapdirTestDir, "hi"), []byte("teststring"), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wazero-mapdirtest/testdir")
+			Finalize: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wazero-mapdirtest/testdir")
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
 				// NOTE: wazero supports single-level mapped directory
-				return []string{"--mapdir=/mapdir::" + filepath.Join(workdir, "wazero-mapdirtest/testdir")}
+				return []string{"--mapdir=/mapdir::" + filepath.Join(env.Workdir, "wazero-mapdirtest/testdir")}
 			},
 			Args: utils.StringFlags("cat", "/mapdir/hi"),
 			Want: utils.WantString("teststring"),
@@ -81,13 +81,13 @@ func TestWazero(t *testing.T) {
 				{Image: "alpine:3.17", Architecture: utils.X86_64},
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
-			Prepare: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wazero-mapdirtest-io")
+			Prepare: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wazero-mapdirtest-io")
 				assert.NilError(t, os.MkdirAll(mapdirTestDir, 0755))
 				assert.NilError(t, os.WriteFile(filepath.Join(mapdirTestDir, "hi"), []byte("teststring"), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				mapdirTestDir := filepath.Join(workdir, "wazero-mapdirtest-io")
+			Finalize: func(t *testing.T, env utils.Env) {
+				mapdirTestDir := filepath.Join(env.Workdir, "wazero-mapdirtest-io")
 
 				// check data from guest
 				data, err := os.ReadFile(filepath.Join(mapdirTestDir, "from-guest", "testhello"))
@@ -100,9 +100,9 @@ func TestWazero(t *testing.T) {
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "hi")))
 				assert.NilError(t, os.Remove(mapdirTestDir))
 			},
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
 				// NOTE: wazero supports single-level mapped directory
-				return []string{"--mapdir=/mapdir::" + filepath.Join(workdir, "wazero-mapdirtest-io")}
+				return []string{"--mapdir=/mapdir::" + filepath.Join(env.Workdir, "wazero-mapdirtest-io")}
 			},
 			Args: utils.StringFlags("sh"),
 			Want: utils.WantPrompt("/ # ",
@@ -135,32 +135,32 @@ FROM riscv64/debian:sid-slim
 RUN apt-get update && apt-get install -y wget
 `},
 			},
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-vm-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-stack-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-vm-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-stack-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
 				pid, port := utils.StartHelloServer(t)
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-pid"), []byte(fmt.Sprintf("%d", pid)), 0755))
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-port"), []byte(fmt.Sprintf("%d", port)), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-pid"), []byte(fmt.Sprintf("%d", pid)), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-port"), []byte(fmt.Sprintf("%d", port)), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				p, err := os.FindProcess(utils.ReadInt(t, filepath.Join(workdir, "httphello-pid")))
+			Finalize: func(t *testing.T, env utils.Env) {
+				p, err := os.FindProcess(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-pid")))
 				assert.NilError(t, err)
 				assert.NilError(t, p.Kill())
 				if _, err := p.Wait(); err != nil {
 					t.Logf("hello server error: %v\n", err)
 				}
-				utils.DonePort(utils.ReadInt(t, filepath.Join(workdir, "httphello-vm-port")))
-				utils.DonePort(utils.ReadInt(t, filepath.Join(workdir, "httphello-stack-port")))
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-vm-port")))
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-stack-port")))
 			},
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
 				return []string{
 					"--stack=" + utils.C2wNetProxyBin,
-					fmt.Sprintf("--stack-port=%d", utils.ReadInt(t, filepath.Join(workdir, "httphello-stack-port"))),
-					fmt.Sprintf("--vm-port=%d", utils.ReadInt(t, filepath.Join(workdir, "httphello-vm-port"))),
+					fmt.Sprintf("--stack-port=%d", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-stack-port"))),
+					fmt.Sprintf("--vm-port=%d", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-vm-port"))),
 				}
 			},
-			Args: func(t *testing.T, workdir string) []string {
-				return []string{"--net=socket=listenfd=4", "sh", "-c", fmt.Sprintf("for I in $(seq 1 50) ; do if wget -O - http://127.0.0.1:%d/ 2>/dev/null ; then break ; fi ; sleep 1 ; done", utils.ReadInt(t, filepath.Join(workdir, "httphello-port")))}
+			Args: func(t *testing.T, env utils.Env) []string {
+				return []string{"--net=socket=listenfd=4", "sh", "-c", fmt.Sprintf("for I in $(seq 1 50) ; do if wget -O - http://127.0.0.1:%d/ 2>/dev/null ; then break ; fi ; sleep 1 ; done", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port")))}
 			},
 			Want: utils.WantString("hello"),
 		},
@@ -170,29 +170,29 @@ RUN apt-get update && apt-get install -y wget
 				{Image: "alpine:3.17", Architecture: utils.X86_64},
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-wasi-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-wasi-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
 				pid, port := utils.StartHelloServer(t)
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-pid"), []byte(fmt.Sprintf("%d", pid)), 0755))
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-port"), []byte(fmt.Sprintf("%d", port)), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-pid"), []byte(fmt.Sprintf("%d", pid)), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-port"), []byte(fmt.Sprintf("%d", port)), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				p, err := os.FindProcess(utils.ReadInt(t, filepath.Join(workdir, "httphello-pid")))
+			Finalize: func(t *testing.T, env utils.Env) {
+				p, err := os.FindProcess(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-pid")))
 				assert.NilError(t, err)
 				assert.NilError(t, p.Kill())
 				if _, err := p.Wait(); err != nil {
 					t.Logf("hello server error: %v\n", err)
 				}
-				utils.DonePort(utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port")))
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port")))
 			},
 			Runtime: "wazero-test",
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				t.Logf("wasi-addr is  %s", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port"))))
-				return []string{"-net", "--wasi-addr", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port")))}
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				t.Logf("wasi-addr is  %s", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port"))))
+				return []string{"-net", "--wasi-addr", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port")))}
 			},
-			Args: func(t *testing.T, workdir string) []string {
-				t.Logf("RUNNING: %s", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(workdir, "httphello-port"))))
-				return []string{"--net=socket", "sh", "-c", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(workdir, "httphello-port")))}
+			Args: func(t *testing.T, env utils.Env) []string {
+				t.Logf("RUNNING: %s", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port"))))
+				return []string{"--net=socket", "sh", "-c", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port")))}
 			},
 			Want: utils.WantString("hello"),
 		},
@@ -220,27 +220,27 @@ COPY --from=dev /out/httphello /
 ENTRYPOINT ["/httphello", "0.0.0.0:80"]
 `},
 			},
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-wasi-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-wasi-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				utils.DonePort(utils.ReadInt(t, filepath.Join(workdir, "httphello-port")))
-				utils.DonePort(utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port")))
+			Finalize: func(t *testing.T, env utils.Env) {
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port")))
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port")))
 			},
 			Runtime: "wazero-test",
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				t.Logf("wasi-addr is  %s", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port"))))
-				wasiPort := utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port"))
-				port := utils.ReadInt(t, filepath.Join(workdir, "httphello-port"))
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				t.Logf("wasi-addr is  %s", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port"))))
+				wasiPort := utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port"))
+				port := utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port"))
 				t.Logf("port is %s", fmt.Sprintf("localhost:%d:80", port))
 				return []string{"-net", "--wasi-addr", fmt.Sprintf("localhost:%d", wasiPort), "-p", fmt.Sprintf("localhost:%d:80", port)}
 			},
-			Args: func(t *testing.T, workdir string) []string {
+			Args: func(t *testing.T, env utils.Env) []string {
 				return []string{"--net=socket"}
 			},
-			Want: func(t *testing.T, workdir string, in io.Writer, out io.Reader) {
-				port := utils.ReadInt(t, filepath.Join(workdir, "httphello-port"))
+			Want: func(t *testing.T, env utils.Env, in io.Writer, out io.Reader) {
+				port := utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port"))
 				cmd := exec.Command("wget", "-q", "-O", "-", fmt.Sprintf("localhost:%d", port))
 				cmd.Stderr = os.Stderr
 				d, err := cmd.Output()
@@ -256,8 +256,8 @@ ENTRYPOINT ["/httphello", "0.0.0.0:80"]
 				{Image: "alpine:3.17", Architecture: utils.X86_64},
 				{Image: "riscv64/alpine:20221110", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64},
 			},
-			Prepare: func(t *testing.T, workdir string) {
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-wasi-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-wasi-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
 				pid, port := utils.StartHelloServer(t)
 				var v [5]int64
 				for i := 0; i < 5; i++ {
@@ -265,28 +265,28 @@ ENTRYPOINT ["/httphello", "0.0.0.0:80"]
 					assert.NilError(t, err)
 					v[i] = n.Int64()
 				}
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "mac"), []byte(fmt.Sprintf("02:%02x:%02x:%02x:%02x:%02x", v[0], v[1], v[2], v[3], v[4])), 0755))
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-pid"), []byte(fmt.Sprintf("%d", pid)), 0755))
-				assert.NilError(t, os.WriteFile(filepath.Join(workdir, "httphello-port"), []byte(fmt.Sprintf("%d", port)), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "mac"), []byte(fmt.Sprintf("02:%02x:%02x:%02x:%02x:%02x", v[0], v[1], v[2], v[3], v[4])), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-pid"), []byte(fmt.Sprintf("%d", pid)), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-port"), []byte(fmt.Sprintf("%d", port)), 0755))
 			},
-			Finalize: func(t *testing.T, workdir string) {
-				p, err := os.FindProcess(utils.ReadInt(t, filepath.Join(workdir, "httphello-pid")))
+			Finalize: func(t *testing.T, env utils.Env) {
+				p, err := os.FindProcess(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-pid")))
 				assert.NilError(t, err)
 				assert.NilError(t, p.Kill())
 				if _, err := p.Wait(); err != nil {
 					t.Logf("hello server error: %v\n", err)
 				}
-				utils.DonePort(utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port")))
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port")))
 			},
 			Runtime: "wazero-test",
-			RuntimeOpts: func(t *testing.T, workdir string) []string {
-				t.Logf("wasi-addr is  %s", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port"))))
-				return []string{"-net", "--wasi-addr", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(workdir, "httphello-wasi-port")))}
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				t.Logf("wasi-addr is  %s", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port"))))
+				return []string{"-net", "--wasi-addr", fmt.Sprintf("localhost:%d", utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-wasi-port")))}
 			},
-			Args: func(t *testing.T, workdir string) []string {
-				t.Logf("RUNNING: %s", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(workdir, "httphello-port"))))
-				t.Logf("MAC: %s", utils.ReadString(t, filepath.Join(workdir, "mac")))
-				return []string{"--net=socket", fmt.Sprintf("--mac=%s", utils.ReadString(t, filepath.Join(workdir, "mac"))), "sh"}
+			Args: func(t *testing.T, env utils.Env) []string {
+				t.Logf("RUNNING: %s", fmt.Sprintf("wget -q -O - http://%s:%d/", hostVirtIP, utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port"))))
+				t.Logf("MAC: %s", utils.ReadString(t, filepath.Join(env.Workdir, "mac")))
+				return []string{"--net=socket", fmt.Sprintf("--mac=%s", utils.ReadString(t, filepath.Join(env.Workdir, "mac"))), "sh"}
 			},
 			Want: utils.WantPromptWithWorkdir("/ # ",
 				func(workdir string) [][2]string {
@@ -296,6 +296,73 @@ ENTRYPOINT ["/httphello", "0.0.0.0:80"]
 					}
 				},
 			),
+		},
+		{
+			Name:    "wazero-imagemounter-registry",
+			Runtime: "imagemounter-test",
+			Inputs: []utils.Input{
+				{Image: "alpine:3.17", Mirror: true, Architecture: utils.X86_64, ConvertOpts: []string{"--external-bundle"}, External: true},
+				{Image: "ghcr.io/stargz-containers/ubuntu:22.04-esgz", Mirror: true, Architecture: utils.X86_64, ConvertOpts: []string{"--external-bundle"}, External: true},
+				{Image: "riscv64/alpine:20221110", Mirror: true, Architecture: utils.RISCV64, ConvertOpts: []string{"--target-arch=riscv64", "--external-bundle"}, External: true},
+			},
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "imagemountertest-vm-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "imagemountertest-stack-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+			},
+			Finalize: func(t *testing.T, env utils.Env) {
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-vm-port")))
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-stack-port")))
+			},
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				return []string{
+					"--image", "localhost:5000/" + env.Input.Image,
+					"--stack", utils.ImageMounterBin,
+					fmt.Sprintf("--stack-port=%d", utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-stack-port"))),
+					fmt.Sprintf("--vm-port=%d", utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-vm-port"))),
+				}
+			},
+			Args: func(t *testing.T, env utils.Env) []string {
+				return []string{"--net=socket=listenfd=4", "--external-bundle=9p=192.168.127.252", "echo", "-n", "hello"}
+			},
+			Want: utils.WantString("hello"),
+		},
+		{
+			Name:    "wazero-imagemounter-store",
+			Runtime: "imagemounter-test",
+			Inputs: []utils.Input{
+				{Image: "alpine:3.17", Store: "testimage", Architecture: utils.X86_64, ConvertOpts: []string{"--external-bundle"}, External: true},
+				{Image: "ghcr.io/stargz-containers/ubuntu:22.04-esgz", Store: "testimage", Architecture: utils.X86_64, ConvertOpts: []string{"--external-bundle"}, External: true},
+				{Image: "riscv64/alpine:20221110", Store: "testimage", Architecture: utils.RISCV64, ConvertOpts: []string{"--target-arch=riscv64", "--external-bundle"}, External: true},
+			},
+			Prepare: func(t *testing.T, env utils.Env) {
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "imagemountertest-vm-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "imagemountertest-stack-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
+				pid, port := utils.StartDirServer(t, filepath.Join(env.Workdir, env.Input.Store))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httpdir-pid"), []byte(fmt.Sprintf("%d", pid)), 0755))
+				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httpdir-port"), []byte(fmt.Sprintf("%d", port)), 0755))
+			},
+			Finalize: func(t *testing.T, env utils.Env) {
+				p, err := os.FindProcess(utils.ReadInt(t, filepath.Join(env.Workdir, "httpdir-pid")))
+				assert.NilError(t, err)
+				assert.NilError(t, p.Kill())
+				if _, err := p.Wait(); err != nil {
+					t.Logf("dir server error: %v\n", err)
+				}
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-vm-port")))
+				utils.DonePort(utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-stack-port")))
+			},
+			RuntimeOpts: func(t *testing.T, env utils.Env) []string {
+				return []string{
+					"--image", fmt.Sprintf("http://localhost:%d/", utils.ReadInt(t, filepath.Join(env.Workdir, "httpdir-port"))),
+					"--stack", utils.ImageMounterBin,
+					fmt.Sprintf("--stack-port=%d", utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-stack-port"))),
+					fmt.Sprintf("--vm-port=%d", utils.ReadInt(t, filepath.Join(env.Workdir, "imagemountertest-vm-port"))),
+				}
+			},
+			Args: func(t *testing.T, env utils.Env) []string {
+				return []string{"--net=socket=listenfd=4", "--external-bundle=9p=192.168.127.252", "echo", "-n", "hello"}
+			},
+			Want: utils.WantString("hello"),
 		},
 	}...)
 }
