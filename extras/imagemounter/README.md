@@ -32,10 +32,12 @@ As of now, the following image server is supported:
 First, build basic dependencies:
 
 ```console
-$ make imagemounter.wasm c2w
 $ mkdir /tmp/outx/
-$ ./out/c2w --external-bundle /tmp/outx/out.wasm
+$ c2w --external-bundle /tmp/outx/out.wasm
+$ make imagemounter.wasm
 ```
+
+> container2wasm >= 0.6.0 is needed.
 
 ### Example on browser + HTTP Server
 

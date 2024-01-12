@@ -1,7 +1,7 @@
-[[:arrow_down: **Download**]](https://github.com/ktock/container2wasm/releases)
-[[:book: **Command reference**]](#command-reference)
-[[:books: **Additional Documents**]](#additional-resources)
-[[:arrow_forward: **Demo**]](https://ktock.github.io/container2wasm-demo/)
+[[⬇️**Download**]](https://github.com/ktock/container2wasm/releases)
+[[📖 **Command reference**]](#command-reference)
+[[📚 **Additional Documents**]](#additional-resources)
+[[▶️**Demo**]](https://ktock.github.io/container2wasm-demo/)
 
 # container2wasm: Container to WASM converter
 
@@ -200,6 +200,7 @@ Options
 - `--debug-image`: Enable debug print in the output image
 - `--show-dockerfile`: Show default Dockerfile
 - `--legacy`: Use "docker build" instead of buildx (no support for assets flag) (default:false)
+- `--external-bundle`: Do not embed container image to the Wasm image but mount it during runtime
 - `--help, -h`: show help
 - `--version, -v: `print the version
 
@@ -310,7 +311,7 @@ Re-compilation (and possibe re-implementation) of the application is needed.
 
 - [`./examples/`](./examples): Examples (python, php, on-browser, networking, etc.)
 - `vscode-container-wasm`: VSCode extension for running containers on VSCode on browser (e.g. `github.dev`), leveraging container2wasm: https://github.com/ktock/vscode-container-wasm
-- [`./extras/imagemounter`]: A helper tool for enabling to distributing and running container images on browser without pre-conversion of the images.
+- [`./extras/imagemounter`](./extras/imagemounter/): A helper tool for enabling to distributing and running container images on browser without pre-conversion of the images.
 
 ## Acknowledgement
 
