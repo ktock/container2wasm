@@ -14,6 +14,8 @@ The following outputs a Wasm image `out.wasm` that contains runc + Linux + CPU e
 $ c2w --external-bundle out.wasm
 ```
 
+> container2wasm >= 0.6.0 is needed.
+
 Then, put a container image to the server in the standard [OCI Image Layout](https://github.com/opencontainers/image-spec/blob/v1.0.2/image-layout.md).
 The following puts `ubuntu:22.04` container image to `/tmp/imageout/`.
 
