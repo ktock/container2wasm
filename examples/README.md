@@ -1,4 +1,4 @@
-# Exapmles 
+# Examples 
 
 Examples of container-to-wasm conversion and running the WASM image on WASI runtime and browser.
 
