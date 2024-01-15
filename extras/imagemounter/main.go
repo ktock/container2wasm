@@ -444,7 +444,7 @@ func main() {
 	if imageAddr == "" {
 		panic("specify image to mount")
 	}
-	imageserver, err := NewImageServer(context.TODO(), imageAddr, imagespec.Platform{
+	imageserver, waitInit, err := NewImageServer(context.TODO(), imageAddr, imagespec.Platform{
 		Architecture: arch,
 		OS:           "linux",
 	})
@@ -567,6 +567,9 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		if waitInit != nil {
+			waitInit()
+		}
 		log.Fatal(imageserver.Serve(l))
 	}()
 	ql, err := findListener(listenFd)
@@ -609,18 +612,18 @@ func findListener(listenFd int) (net.Listener, error) {
 	return net.FileListener(f)
 }
 
-func NewImageServer(ctx context.Context, imageAddr string, platform imagespec.Platform) (*p9.Server, error) {
-	config, rootNode, configD, err := fsFromImage(ctx, imageAddr, platform, true)
+func NewImageServer(ctx context.Context, imageAddr string, platform imagespec.Platform) (*p9.Server, func(), error) {
+	config, rootNode, configD, waitInit, err := fsFromImage(ctx, imageAddr, platform, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	s, err := generateSpec(*config, rootNode)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	specD, err := json.Marshal(s)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	initNodes := make(map[string]p9.File)
 	initNodes["rootfs"] = rootNode
@@ -632,19 +635,19 @@ func NewImageServer(ctx context.Context, imageAddr string, platform imagespec.Pl
 	} {
 		a, err := p9staticfs.New(o...)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		n, err := a.Attach()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		initNodes[name] = n
 	}
 	a, err := NewRouteNode(initNodes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create route node: %w", err)
+		return nil, nil, fmt.Errorf("failed to create route node: %w", err)
 	}
-	return p9.NewServer(a), nil
+	return p9.NewServer(a), waitInit, nil
 }
 
 const (
@@ -709,44 +712,47 @@ func generateSpec(config imagespec.Image, rootNode p9.File) (_ *runtimespec.Spec
 	return s, nil
 }
 
-func fsFromImage(ctx context.Context, addr string, platform imagespec.Platform, insecure bool) (*imagespec.Image, *Node, []byte, error) {
+func fsFromImage(ctx context.Context, addr string, platform imagespec.Platform, insecure bool) (*imagespec.Image, *Node, []byte, func(), error) {
 	var layers []NodeLayer
 	var config imagespec.Image
 	var configData []byte
+	var waitInit func()
 	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
 		log.Printf("Pulling from HTTP server %q\n", addr)
 		manifest, image, configD, err := fetchManifestAndConfigOCILayout(ctx, addr, platform)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		config = image
 		configData = configD
-		layers, err = fetchLayers(ctx, manifest, EStargzLayerConfig{
+		layers, waitInit, err = fetchLayers(ctx, manifest, EStargzLayerConfig{
 			NoBackgroundFetch: true,
-			// NoPrefetch: true,
+			PrefetchTimeout:   5 * time.Second,
+			// NoPrefetch:        true,
 		}, nil, map[string]esgzremote.Handler{
 			"url-reader": &layerOCILayoutURLHandler{addr},
 		}, reference.Spec{}, newLayerOCILayoutExternalReaderAt(addr))
 		// }, reference.Spec{}, newLayerOCILayoutURLReader(addr))
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	} else {
 		log.Printf("Pulling from registry %q\n", addr)
 		refspec, err := reference.Parse(addr)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		manifest, image, configD, fetcher, err := fetchManifestAndConfigRegistry(ctx, refspec, platform)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		config = image
 		configData = configD
-		layers, err = fetchLayers(ctx, manifest, EStargzLayerConfig{
+		layers, waitInit, err = fetchLayers(ctx, manifest, EStargzLayerConfig{
 			NoBackgroundFetch: true,
-			// NoPrefetch: true,
-		}, wasmRegistryHosts, nil, refspec, func(desc imagespec.Descriptor, withDecompression bool) (io.Reader, error) {
+			PrefetchTimeout:   5 * time.Second,
+			// NoPrefetch:        true,
+		}, wasmRegistryHosts, nil, refspec, func(desc imagespec.Descriptor, withDecompression bool) (io.ReaderAt, error) {
 			r, err := fetcher.Fetch(ctx, desc)
 			if err != nil {
 				return nil, err
@@ -768,17 +774,17 @@ func fsFromImage(ctx context.Context, addr string, platform imagespec.Platform, 
 			return io.NewSectionReader(bytes.NewReader(data), 0, int64(len(data))), nil
 		})
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 	imgFS := &applier{}
 
 	for _, l := range layers {
 		if err := imgFS.ApplyNodes(l); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
-	return &config, imgFS.n, configData, nil
+	return &config, imgFS.n, configData, waitInit, nil
 }
 
 var defaultClient = &http.Client{Transport: wasmRoundTripper{}}
@@ -881,48 +887,39 @@ func fetchManifestAndConfigOCILayout(ctx context.Context, addr string, platform 
 	return manifest, config, configD, nil
 }
 
-func fetchLayers(ctx context.Context, manifest imagespec.Manifest, config EStargzLayerConfig, hosts esgzsource.RegistryHosts, handlers map[string]esgzremote.Handler, refspec reference.Spec, unlazyReader func(imagespec.Descriptor, bool) (io.Reader, error)) ([]NodeLayer, error) {
-	layers, err := getEStargzLayers(ctx, manifest, EStargzLayerConfig{
-		NoBackgroundFetch: true,
-		// NoPrefetch: true,
-	}, hosts, handlers, refspec)
+func fetchLayers(ctx context.Context, manifest imagespec.Manifest, config EStargzLayerConfig, hosts esgzsource.RegistryHosts, handlers map[string]esgzremote.Handler, refspec reference.Spec, unlazyReader func(imagespec.Descriptor, bool) (io.ReaderAt, error)) ([]NodeLayer, func(), error) {
+	layers, waitInit, err := getEStargzLayers(ctx, manifest, config, hosts, handlers, refspec)
 	if err == nil {
-		return layers, nil
+		return layers, waitInit, nil
 	}
 
 	log.Printf("falling back to gzip mode (previous error: %v)\n", err)
 	layers, err = getTarLayers(ctx, manifest, true, unlazyReader)
 	if err == nil {
-		return layers, nil
+		return layers, nil, nil
 	}
 
 	log.Printf("falling back to tar mode (previous error: %v)\n", err)
 	layers, err = getTarLayers(ctx, manifest, false, unlazyReader)
 	if err == nil {
-		return layers, nil
+		return layers, nil, nil
 	}
 
-	return nil, fmt.Errorf("failed to fetch layers (last error: %v)", err)
+	return nil, nil, fmt.Errorf("failed to fetch layers (last error: %v)", err)
 }
 
-func getTarLayers(ctx context.Context, manifest imagespec.Manifest, withDecompression bool, getReader func(imagespec.Descriptor, bool) (io.Reader, error)) ([]NodeLayer, error) {
+func getTarLayers(ctx context.Context, manifest imagespec.Manifest, withDecompression bool, getReader func(imagespec.Descriptor, bool) (io.ReaderAt, error)) ([]NodeLayer, error) {
 	layers := make([]NodeLayer, len(manifest.Layers))
 	q := new(qidSet)
 	eg, _ := errgroup.WithContext(ctx)
 	for i, l := range manifest.Layers {
 		i, l := i, l
 		eg.Go(func() error {
-			var r io.Reader
-			var err error
-			r, err = getReader(l, withDecompression)
+			r, err := getReader(l, withDecompression)
 			if err != nil {
 				return err
 			}
-			data, err := io.ReadAll(r)
-			if err != nil {
-				return err
-			}
-			n, err := newTarNode(q, bytes.NewReader(data))
+			n, err := newTarNode(q, r)
 			if err != nil {
 				return err
 			}
@@ -1066,7 +1063,7 @@ func wasmRegistryHosts(ref reference.Spec) (hosts []docker.RegistryHost, _ error
 	return
 }
 
-func getEStargzLayers(ctx context.Context, manifest imagespec.Manifest, config EStargzLayerConfig, hosts esgzsource.RegistryHosts, handlers map[string]esgzremote.Handler, refspec reference.Spec) ([]NodeLayer, error) {
+func getEStargzLayers(ctx context.Context, manifest imagespec.Manifest, config EStargzLayerConfig, hosts esgzsource.RegistryHosts, handlers map[string]esgzremote.Handler, refspec reference.Spec) ([]NodeLayer, func(), error) {
 	layers := make([]NodeLayer, len(manifest.Layers))
 	checkChunkDigests := config.DisableChunkVerify
 	maxConcurrency := config.MaxConcurrency
@@ -1083,6 +1080,7 @@ func getEStargzLayers(ctx context.Context, manifest imagespec.Manifest, config E
 	readerCache := esgzcache.NewMemoryCache()
 	esgzresolver := esgzremote.NewResolver(esgzconfig.BlobConfig{}, handlers)
 	tm := esgztask.NewBackgroundTaskManager(maxConcurrency, 5*time.Second)
+	prefetcheg, _ := errgroup.WithContext(context.TODO())
 	eg, _ := errgroup.WithContext(ctx)
 	for i, l := range manifest.Layers {
 		i, l := i, l
@@ -1106,8 +1104,11 @@ func getEStargzLayers(ctx context.Context, manifest imagespec.Manifest, config E
 			}
 			if !noPrefetch {
 				prefetchWaiter := newWaiter()
-				eg.Go(func() error {
-					return prefetchWaiter.wait(prefetchTimeout)
+				prefetcheg.Go(func() error {
+					if err := prefetchWaiter.wait(prefetchTimeout); err != nil {
+						log.Printf("failed to wait for prefetch: %v\n", err)
+					}
+					return nil
 				})
 				go func() {
 					if err := esgzPrefetch(ctx, tm, prefetchWaiter, b, vr); err != nil {
@@ -1152,9 +1153,11 @@ func getEStargzLayers(ctx context.Context, manifest imagespec.Manifest, config E
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return layers, nil
+	return layers, func() {
+		prefetcheg.Wait()
+	}, nil
 }
 
 func esgzPrefetch(ctx context.Context, tm *esgztask.BackgroundTaskManager, prefetchWaiter *waiter, blob esgzremote.Blob, r *esgzreader.VerifiableReader) error {
@@ -1799,7 +1802,7 @@ func (a *applier) ApplyNodes(nodes NodeLayer) error {
 
 type qidSet struct {
 	curQID uint64
-	mu sync.Mutex
+	mu     sync.Mutex
 }
 
 func (q *qidSet) newQID() uint64 {
@@ -2074,8 +2077,8 @@ func layer_isreadable(id uint32, isOKP uint32, sizeP uint32) uint32
 //go:wasmimport env layer_readat
 func layer_readat(id uint32, respP uint32, offset uint32, len uint32, respsizeP uint32) uint32
 
-func newLayerOCILayoutExternalReaderAt(addr string) func(l imagespec.Descriptor, withDecompression bool) (io.Reader, error) {
-	return func(l imagespec.Descriptor, withDecompression bool) (io.Reader, error) {
+func newLayerOCILayoutExternalReaderAt(addr string) func(l imagespec.Descriptor, withDecompression bool) (io.ReaderAt, error) {
+	return func(l imagespec.Descriptor, withDecompression bool) (io.ReaderAt, error) {
 		dgst := l.Digest.Encoded()
 		layerAddr := addr + "/blobs/sha256/" + dgst
 		var id uint32
@@ -2122,23 +2125,6 @@ func newLayerOCILayoutExternalReaderAt(addr string) func(l imagespec.Descriptor,
 			}
 			return int(respsize), nil
 		}), 0, int64(size)), nil
-	}
-}
-
-func newLayerOCILayoutURLReader(addr string) func(l imagespec.Descriptor, withDecompression bool) (io.Reader, error) {
-	return func(l imagespec.Descriptor, withDecompression bool) (io.Reader, error) {
-		var r io.Reader
-		r = io.NewSectionReader(&urlReaderAt{url: addr + "/blobs/sha256/" + l.Digest.Encoded()}, 0, l.Size)
-		if withDecompression {
-			raw := r
-			zr, err := gzip.NewReader(raw)
-			if err != nil {
-				return nil, err
-			}
-			defer zr.Close()
-			r = zr
-		}
-		return r, nil
 	}
 }
 
