@@ -330,7 +330,7 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 		if isOK == 1 {
 			break
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	var respD []byte = make([]byte, 1048576)
