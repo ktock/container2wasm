@@ -222,9 +222,10 @@ func contentLengthFromHeaders(h http.Header) int64 {
 	return int64(i)
 }
 
-func fetchResponseToHTTPResponse(resp *FetchResponse) *http.Response {
+func fetchResponseToHTTPResponse(req *http.Request, resp *FetchResponse) *http.Response {
 	h := decodeHeader(resp.Headers)
 	return &http.Response{
+		Request:       req,
 		Status:        resp.StatusText,
 		StatusCode:    resp.Status,
 		Header:        h,
@@ -386,7 +387,7 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		pw.Close()
 	}()
-	r := fetchResponseToHTTPResponse(&resp)
+	r := fetchResponseToHTTPResponse(req, &resp)
 	r.Body = pr
 	return r, nil
 }
@@ -1053,6 +1054,7 @@ func wasmRegistryHosts(ref reference.Spec) (hosts []docker.RegistryHost, _ error
 		Scheme:       "https",
 		Path:         "/v2",
 		Capabilities: docker.HostCapabilityPull | docker.HostCapabilityResolve,
+		Authorizer:   docker.NewDockerAuthorizer(docker.WithAuthClient(client)),
 	}
 	if localhost, _ := docker.MatchLocalhost(config.Host); localhost {
 		config.Scheme = "http"
