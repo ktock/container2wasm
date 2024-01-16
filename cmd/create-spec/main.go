@@ -119,6 +119,10 @@ func unpackOCI(ctx context.Context, imgDir string, platformMC platforms.MatchCom
 			if err := json.Unmarshal(mfstD, &manifest); err != nil {
 				return nil, err
 			}
+			if !isContainerManifest(manifest) {
+				fmt.Printf("%v is not a container manifest. skipping...", desc.Digest.String())
+				continue
+			}
 			configD, err := os.ReadFile(filepath.Join(imgDir, "/blobs/sha256", manifest.Config.Digest.Encoded()))
 			if err != nil {
 				return nil, err
@@ -163,35 +167,50 @@ func unpackOCI(ctx context.Context, imgDir string, platformMC platforms.MatchCom
 			if err := json.Unmarshal(idxD, &idx); err != nil {
 				return nil, err
 			}
-			var childrenDescs []ocispec.Descriptor
-			for _, d := range idx.Manifests {
-				if d.Platform != nil && platformMC != nil && !platformMC.Match(*d.Platform) {
-					continue
-				}
-				childrenDescs = append(childrenDescs, d)
-			}
-			sort.SliceStable(childrenDescs, func(i, j int) bool {
-				if childrenDescs[i].Platform == nil {
-					return false
-				}
-				if childrenDescs[j].Platform == nil {
-					return true
-				}
-				if platformMC != nil {
-					return platformMC.Less(*childrenDescs[i].Platform, *childrenDescs[j].Platform)
-				}
-				return true
-			})
-			children = childrenDescs[:1]
+			children = append(children, idx.Manifests...)
 		default:
 			return nil, fmt.Errorf("unsupported mediatype %v", desc.MediaType)
 		}
+	}
+	if len(children) > 0 {
+		var childrenDescs []ocispec.Descriptor
+		for _, d := range children {
+			if d.Platform != nil && platformMC != nil && !platformMC.Match(*d.Platform) {
+				continue
+			}
+			childrenDescs = append(childrenDescs, d)
+		}
+		sort.SliceStable(childrenDescs, func(i, j int) bool {
+			if childrenDescs[i].Platform == nil {
+				return false
+			}
+			if childrenDescs[j].Platform == nil {
+				return true
+			}
+			if platformMC != nil {
+				return platformMC.Less(*childrenDescs[i].Platform, *childrenDescs[j].Platform)
+			}
+			return true
+		})
+		children = childrenDescs
 	}
 	if len(children) > 0 {
 		fmt.Printf("nested manifest: processing %v\n", children)
 		return unpackOCI(ctx, imgDir, platformMC, rootfs, children)
 	}
 	return nil, fmt.Errorf("target config not found")
+}
+
+func isContainerManifest(manifest ocispec.Manifest) bool {
+	if !images.IsConfigType(manifest.Config.MediaType) {
+		return false
+	}
+	for _, desc := range manifest.Layers {
+		if !images.IsLayerType(desc.MediaType) {
+			return false
+		}
+	}
+	return true
 }
 
 func unpackDocker(ctx context.Context, imgDir string, platform *spec.Platform, rootfs string) (io.Reader, error) {
