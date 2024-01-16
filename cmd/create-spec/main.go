@@ -97,7 +97,7 @@ func unpack(ctx context.Context, imgDir string, platform *spec.Platform, rootfs 
 		return nil, err
 	}
 	var platformMC platforms.MatchComparer
-	if platformMC != nil {
+	if platform != nil {
 		platformMC = platforms.Only(*platform)
 	}
 	return unpackOCI(ctx, imgDir, platformMC, rootfs, idx.Manifests)
