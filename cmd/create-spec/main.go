@@ -323,7 +323,8 @@ func generateSpec(config spec.Image, rootfs string) (_ *specs.Spec, err error) {
 		ctdoci.WithHostNamespace(specs.NetworkNamespace),
 		ctdoci.WithoutRunMount,
 		ctdoci.WithEnv(ic.Env),
-		ctdoci.WithTTY, // TODO: make it configurable
+		ctdoci.WithTTY,           // TODO: make it configurable
+		ctdoci.WithNewPrivileges, // TODO: make it configurable
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate spec: %w", err)
