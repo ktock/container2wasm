@@ -13,7 +13,7 @@ require (
 	github.com/opencontainers/runc v1.1.5
 	github.com/opencontainers/runtime-spec v1.1.0
 	github.com/sirupsen/logrus v1.9.3
-	golang.org/x/sync v0.4.0
+	golang.org/x/sync v0.6.0
 )
 
 require (
@@ -37,7 +37,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.4 // indirect
 	github.com/insomniacslk/dhcp v0.0.0-20220504074936-1ca156eafb9f // indirect
-	github.com/klauspost/compress v1.17.2 // indirect
+	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/sys/mountinfo v0.6.2 // indirect
@@ -70,6 +70,8 @@ replace github.com/u-root/uio => github.com/ktock/u-root-uio v0.0.0-202309111429
 
 replace github.com/hugelgupf/p9 => github.com/ktock/p9 v0.0.0-20240109162600-dac0f97fe886
 
-replace github.com/containerd/stargz-snapshotter => github.com/ktock/stargz-snapshotter v0.0.1-0.20240109162903-e5206b85e4cc
+replace github.com/containerd/stargz-snapshotter => github.com/ktock/stargz-snapshotter v0.0.1-0.20240304123548-c3fcce188d68
 
 replace github.com/containerd/containerd => github.com/ktock/containerd v1.2.1-0.20240109162750-28ec64e033db
+
+replace github.com/containerd/stargz-snapshotter/estargz => github.com/ktock/stargz-snapshotter/estargz v0.0.0-20240304123548-c3fcce188d68

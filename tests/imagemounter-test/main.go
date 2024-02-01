@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	crand "crypto/rand"
 	"encoding/json"
@@ -16,13 +17,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"compress/gzip"
 
+	digest "github.com/opencontainers/go-digest"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental/sock"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
-	digest "github.com/opencontainers/go-digest"
 )
 
 func main() {
@@ -31,7 +31,7 @@ func main() {
 		stackPort = flag.Int("stack-port", 8999, "listen port of network stack")
 		vmPort    = flag.Int("vm-port", 1234, "listen port of vm")
 		debug     = flag.Bool("debug", false, "enable debug log")
-		imageAddr     = flag.String("image", "", "address of image to run")
+		imageAddr = flag.String("image", "", "address of image to run")
 	)
 	var envs envFlags
 	flag.Var(&envs, "env", "environment variables")
@@ -80,7 +80,10 @@ func main() {
 			NewFunctionBuilder().WithFunc(http_readbody).Export("http_readbody").
 			NewFunctionBuilder().WithFunc(layer_request).Export("layer_request").
 			NewFunctionBuilder().WithFunc(layer_isreadable).Export("layer_isreadable").
-			NewFunctionBuilder().WithFunc(layer_readat).Export("layer_readat")
+			NewFunctionBuilder().WithFunc(layer_readat).Export("layer_readat").
+			NewFunctionBuilder().WithFunc(decompress_init).Export("decompress_init").
+			NewFunctionBuilder().WithFunc(decompress_write).Export("decompress_write").
+			NewFunctionBuilder().WithFunc(decompress_read).Export("decompress_read")
 		if _, err := b.Instantiate(ctx); err != nil {
 			panic(err)
 		}
@@ -90,7 +93,7 @@ func main() {
 		}
 		stackFSConfig := wazero.NewFSConfig()
 		stackFSConfig = stackFSConfig.WithDirMount(crtDir, "/test")
-		flagargs := []string{"--certfile=/test/proxy.crt", "--image-addr="+*imageAddr}
+		flagargs := []string{"--certfile=/test/proxy.crt", "--image-addr=" + *imageAddr}
 		if *debug {
 			flagargs = append(flagargs, "--debug")
 		}
@@ -245,7 +248,7 @@ func layer_request(ctx context.Context, m api.Module, addressP uint32, addressle
 		respMap[id] = resp
 		respMapMu.Unlock()
 
-		v := digest.Digest("sha256:"+string(digestB)).Verifier()
+		v := digest.Digest("sha256:" + string(digestB)).Verifier()
 		r := io.TeeReader(resp.Body, v)
 		if withDecompression == 1 {
 			raw := r
@@ -307,7 +310,7 @@ func layer_readat(ctx context.Context, m api.Module, id uint32, respP uint32, of
 		return ERRNO_INVAL
 	}
 
-	if uint32(len(buf)) < offset + wantlen {
+	if uint32(len(buf)) < offset+wantlen {
 		wantlen = uint32(len(buf)) - offset
 	}
 	if !mem.Write(respP, buf[offset:offset+wantlen]) {
@@ -320,7 +323,6 @@ func layer_readat(ctx context.Context, m api.Module, id uint32, respP uint32, of
 	}
 	return 0
 }
-
 
 func http_send(ctx context.Context, m api.Module, addressP uint32, addresslen uint32, reqP, reqlen uint32, idP uint32) uint32 {
 	mem := m.Memory()
@@ -522,4 +524,138 @@ func (i *envFlags) String() string {
 func (i *envFlags) Set(value string) error {
 	*i = append(*i, value)
 	return nil
+}
+
+var decompressorMap = make(map[uint32]*decompressor)
+var decompressorMapMu sync.Mutex
+var decompressorMapId uint32
+var decompressorMapIdMu sync.Mutex
+
+func decompress_init(ctx context.Context, m api.Module, idP uint32) uint32 {
+	mem := m.Memory()
+	decompressorMapIdMu.Lock()
+	id := decompressorMapId
+	decompressorMapId++
+	decompressorMapIdMu.Unlock()
+
+	pr, pw := io.Pipe()
+
+	decompressorMapMu.Lock()
+	decompressorMap[id] = newDecompressor(pr, pw)
+	decompressorMapMu.Unlock()
+
+	if !mem.WriteUint32Le(idP, id) {
+		log.Println("failed to pass id")
+		return ERRNO_INVAL
+	}
+
+	return 0
+}
+
+func decompress_write(ctx context.Context, m api.Module, id uint32, bufP uint32, buflen uint32, isEOF uint32) uint32 {
+	mem := m.Memory()
+	decompressorMapMu.Lock()
+	w := decompressorMap[id]
+	decompressorMapMu.Unlock()
+	if w == nil {
+		log.Println("decompressor not found:", id)
+		return ERRNO_INVAL
+	}
+
+	bufB, ok := mem.Read(bufP, buflen)
+	if !ok {
+		log.Println("failed to get buf")
+		return ERRNO_INVAL
+	}
+	if _, err := w.Write(bufB); err != nil {
+		w.CloseWithError(err)
+		log.Println("failed to write req:", err)
+		return ERRNO_INVAL
+	}
+
+	if isEOF == 1 {
+		w.Close()
+	}
+	return 0
+}
+
+func decompress_read(ctx context.Context, m api.Module, id uint32, bufP uint32, buflen uint32, recvLenP uint32, isEOFP uint32) uint32 {
+	mem := m.Memory()
+	decompressorMapMu.Lock()
+	r := decompressorMap[id]
+	r.mu.Lock()
+	isEOF := uint32(0)
+	if r.eof {
+		isEOF = 1
+	}
+	n := buflen
+	if uint32(n) > uint32(len(r.buf)) {
+		n = uint32(len(r.buf))
+	}
+	buf := r.buf[:n]
+	r.buf = r.buf[n:]
+	r.mu.Unlock()
+	decompressorMapMu.Unlock()
+
+	if !mem.Write(bufP, buf[:n]) {
+		log.Println("failed to write blob")
+		return ERRNO_INVAL
+	}
+	if !mem.WriteUint32Le(recvLenP, uint32(n)) {
+		log.Println("failed to write blob size")
+		return ERRNO_INVAL
+	}
+	if !mem.WriteUint32Le(isEOFP, isEOF) {
+		log.Println("failed to write EOF status for blob")
+		return ERRNO_INVAL
+	}
+	return 0
+}
+
+type decompressor struct {
+	*io.PipeWriter
+	buf []byte
+	eof bool
+	r   io.ReadCloser
+	mu  sync.Mutex
+}
+
+func newDecompressor(pr *io.PipeReader, pw *io.PipeWriter) *decompressor {
+	d := &decompressor{
+		buf:        make([]byte, 0),
+		PipeWriter: pw,
+	}
+	initCh := make(chan struct{})
+	go func() {
+		r, err := gzip.NewReader(pr) // blocks until first completion of reading pr
+		if err != nil {
+			return
+		}
+		d.mu.Lock()
+		d.r = r
+		d.mu.Unlock()
+		close(initCh)
+
+	}()
+	go func() {
+		<-initCh
+		buf := make([]byte, 4096)
+		for {
+			n, err := d.r.Read(buf)
+			if err != nil && err != io.EOF {
+				log.Printf("error on preread: %d, %v\n", n, err)
+				return
+			}
+			d.mu.Lock()
+			d.buf = append(d.buf, buf[:n]...)
+			if err == io.EOF {
+				d.eof = true
+			}
+			d.mu.Unlock()
+			if err == io.EOF {
+				break
+			}
+		}
+	}()
+	return d
 }
