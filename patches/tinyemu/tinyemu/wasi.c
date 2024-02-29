@@ -170,15 +170,6 @@ int32_t __imported_wasi_snapshot_preview1_poll_oneoff(int32_t arg0, int32_t arg1
   return poll_oneoff(arg0, arg1, arg2, arg3);
 }
 
-int32_t fd_close(int32_t arg0) __attribute__((
-    __import_module__("wasi_snapshot_preview1"),
-    __import_name__("fd_close")
-));
-
-int32_t __imported_wasi_snapshot_preview1_fd_close(int32_t arg0) {
-  return fd_close(arg0);
-}
-
 int init_wasi()
 {
     __wasilibc_ensure_environ();

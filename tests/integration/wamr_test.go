@@ -105,7 +105,7 @@ func TestWamr(t *testing.T) {
 				// check data from guest
 				data, err := os.ReadFile(filepath.Join(mapdirTestDir, "from-guest", "testhello"))
 				assert.NilError(t, err)
-				assert.Equal(t, string(data), "hello")
+				assert.Equal(t, string(data), "hello2")
 
 				// cleanup
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "from-guest", "testhello")))
@@ -123,6 +123,7 @@ func TestWamr(t *testing.T) {
 						[2]string{"cat " + filepath.Join(workdir, "wamr-mapdirtest-io/hi") + "\n", "teststring"},
 						[2]string{"mkdir " + filepath.Join(workdir, "wamr-mapdirtest-io/from-guest") + "\n", ""},
 						[2]string{"echo -n hello > " + filepath.Join(workdir, "wamr-mapdirtest-io/from-guest/testhello") + "\n", ""},
+						[2]string{"echo -n hello2 > " + filepath.Join(workdir, "wamr-mapdirtest-io/from-guest/testhello") + "\n", ""}, // overwrite
 					}
 				},
 			),

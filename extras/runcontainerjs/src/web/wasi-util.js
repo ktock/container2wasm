@@ -166,6 +166,15 @@ export function wasiHackSocket(wasi, listenfd, connfd, sockAccept, sockSend, soc
         }
         return _fd_fdstat_get.apply(wasi.wasiImport, [fd, fdstat_ptr]);
     }
+    var _fd_prestat_get = wasi.wasiImport.fd_prestat_get;
+    wasi.wasiImport.fd_prestat_get = (fd, prestat_ptr) => {
+        if ((fd == listenfd) || (fd <= connfd)){ // reserve socket-related fds
+            let buffer = new DataView(wasi.inst.exports.memory.buffer);
+            buffer.setUint8(prestat_ptr, 1);
+            return 0;
+        }
+        return _fd_prestat_get.apply(wasi.wasiImport, [fd, prestat_ptr]);
+    }
     wasi.wasiImport.sock_accept = (fd, flags, fd_ptr) => {
         if (fd != listenfd) {
             console.log("sock_accept: unknown fd " + fd);
