@@ -92,7 +92,7 @@ func TestWasmtime(t *testing.T) {
 				// check data from guest
 				data, err := os.ReadFile(filepath.Join(mapdirTestDir, "from-guest", "testhello"))
 				assert.NilError(t, err)
-				assert.Equal(t, string(data), "hello")
+				assert.Equal(t, string(data), "hello2")
 
 				// cleanup
 				assert.NilError(t, os.Remove(filepath.Join(mapdirTestDir, "from-guest", "testhello")))
@@ -109,6 +109,7 @@ func TestWasmtime(t *testing.T) {
 				[2]string{"cat /mapped/dir/test/hi\n", "teststring"},
 				[2]string{"mkdir /mapped/dir/test/from-guest\n", ""},
 				[2]string{"echo -n hello > /mapped/dir/test/from-guest/testhello\n", ""},
+				[2]string{"echo -n hello2 > /mapped/dir/test/from-guest/testhello\n", ""}, // overwrite
 			),
 		},
 		{
