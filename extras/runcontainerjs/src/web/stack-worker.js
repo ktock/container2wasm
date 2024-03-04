@@ -2,6 +2,21 @@ import { WASI } from "@bjorn3/browser_wasi_shim";
 import * as wasitype from "@bjorn3/browser_wasi_shim";
 import { Event, EventType, Subscription, SubscriptionClock, SubscriptionFdReadWrite, SubscriptionU, wasiHackSocket } from './wasi-util';
 
+const _console_log_fn = console.log;
+console.log = function(message) {
+    _console_log_fn.apply(console, [message]);
+    if(typeof message === 'string' || message instanceof String) {
+        if(message.includes("pull completed")) {
+            const endTime = new Date();
+            _console_log_fn.apply(console, [JSON.stringify({
+                time: endTime,
+                message: "detected pull completion",
+                raw_string: message,
+            })]);
+        }
+    }
+};
+
 onmessage = (msg) => {
     var info = serveIfInitMsg(msg);
     if (info == null) {

@@ -1,0 +1,69 @@
+<html>
+  <head>
+    <title>container + WASI on browser</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.17.0/css/xterm.css">
+  </head>
+  <body>
+    <div id="terminal"></div>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@4.17.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-pty@0.9.4/index.js"></script>
+    <script src="./assets/dist/runcontainer.js"></script>
+    <script>
+      const xterm = new Terminal();
+      xterm.open(document.getElementById("terminal"));
+      const { master, slave } = openpty();
+      termios = slave.ioctl("TCGETS");
+      termios.iflag &= ~(/*IGNBRK | BRKINT | PARMRK |*/ ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+      termios.oflag &= ~(OPOST);
+      termios.lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+      //termios.cflag &= ~(CSIZE | PARENB);
+      //termios.cflag |= CS8;
+      slave.ioctl("TCSETS", new Termios(termios.iflag, termios.oflag, termios.cflag, termios.lflag, termios.cc));
+      xterm.loadAddon(master);
+
+      const worker = new Worker("./worker.js");
+      const vmImage = location.origin + "/assets/out.wasm.gzip";
+      const mounterImage = location.origin + "/assets/imagemounter.wasm.gzip";
+      const stackWorkerFile = location.origin + "/assets/dist/stack-worker.js";
+      const containerImageAddress = getImageParam("image");
+      const infoP = RunContainer.createContainer(vmImage, containerImageAddress, stackWorkerFile, mounterImage);
+      const startTime = new Date();
+      console.log(JSON.stringify({
+          time: startTime,
+          message: "start timer",
+      }));
+      const wantStr = getImageParam("want");
+      infoP.then((info) => {
+          worker.postMessage({type: "init", info: info, args: JSON.parse(atob(getImageParam("command")))});
+          var _write = slave.write;
+          slave.write = function(d) {
+              const s = new TextDecoder().decode(new Uint8Array(d));
+              console.log(s);
+              if (s.includes(wantStr)) {
+                  const endTime = new Date();
+                  const seconds = (endTime.getTime() - startTime.getTime()) / 1000;
+                  console.log(JSON.stringify({
+                      time: endTime,
+                      duration: seconds,
+                      message: "found wanted string",
+                      want_string: wantStr,
+                      raw_string: s,
+                  }));
+              }
+              _write.apply(slave, [d]);
+          }
+          new TtyServer(slave).start(worker);
+      })
+      function getImageParam(name) {
+          var vars = location.search.substring(1).split('&');
+          for (var i = 0; i < vars.length; i++) {
+              var kv = vars[i].split('=');
+              if (decodeURIComponent(kv[0]) == name) {
+                  return kv[1];
+              }
+          }
+          return null;
+      }
+    </script>
+  </body>
+</html>

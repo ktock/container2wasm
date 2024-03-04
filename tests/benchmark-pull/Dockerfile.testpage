@@ -1,0 +1,5 @@
+FROM httpd
+RUN echo "Include conf/extra/xterm-pty.conf" >> /usr/local/apache2/conf/httpd.conf
+COPY ./tests/benchmark-pull/xterm-pty.conf /usr/local/apache2/conf/extra/xterm-pty.conf
+COPY ./tests/benchmark-pull/htdocs /usr/local/apache2/htdocs
+COPY ./out/assets /usr/local/apache2/htdocs/assets

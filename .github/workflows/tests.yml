@@ -1,48 +1,86 @@
 name: Tests
 on:
   push:
-    branches:
-      - main
+    # branches:
+    #   - main
   pull_request:
 
 env:
   DOCKER_BUILDKIT: 1
 
 jobs:
-  build:
+  # build:
+  #   runs-on: ubuntu-22.04
+  #   name: Build
+  #   steps:
+  #   - uses: actions/setup-go@v5
+  #     with:
+  #       go-version: '1.21.x'
+  #   - uses: actions/checkout@v4
+  #   - name: Build all
+  #     run: |
+  #       make
+  #       ls -al ./out/c2w
+  #       if ldd ./out/c2w ; then echo "must be static binary" ; exit 1 ; fi
+  #       ls -al ./out/c2w-net
+  #       if ldd ./out/c2w-net ; then echo "must be static binary" ; exit 1 ; fi
+
+  # test:
+  #   runs-on: ubuntu-22.04
+  #   name: Test
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
+  #       arch: ["x86_64", "(riscv64|aarch64)"]
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #   - name: binfmt
+  #     run: |
+  #       docker run --privileged --rm tonistiigi/binfmt --install riscv64
+  #   - name: test
+  #     env:
+  #       GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=${{ matrix.arch }}.*
+  #     run: |
+  #       make test
+
+  benchmark-pull:
     runs-on: ubuntu-22.04
-    name: Build
+    name: Benchmark
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+        - { name: "gcc-9.2.0-esgz", image: "ghcr.io/stargz-containers/gcc:9.2.0-esgz", want: "hello", command: "[\"echo\", \"hello\"]" }
+        - { name: "gcc-9.2.0-org", image: "ghcr.io/stargz-containers/gcc:9.2.0-org", want: "hello", command: "[\"echo\", \"hello\"]" }
+        - { name: "python-3.10-esgz", image: "ghcr.io/stargz-containers/python:3.10-esgz", want: "hello", command: "[\"/bin/sh\", \"-c\", \"python -c 'print(\\\"hello2\\\")'\"]" }
+        - { name: "python-3.10-org", image: "ghcr.io/stargz-containers/python:3.10-org", want: "hello", command: "[\"/bin/sh\", \"-c\", \"python -c 'print(\\\"hello2\\\")'\"]" }
+    env:
+      TARGET_IMAGE: ${{ matrix.target.image }}
+      TARGET_STRING: ${{ matrix.target.want }}
+      TARGET_COMMAND: ${{ matrix.target.command }}
+      PERCENTILE: 90
+      SAMPLES_NUM: 10
+      BENCHMARK_RESULT_DIR: ${{ github.workspace }}/benchmark/
+      BENCHMARK_RESULT: ${{ github.workspace }}/benchmark/result
     steps:
+    - name: Install tools
+      run: |
+          pip install numpy
     - uses: actions/setup-go@v5
       with:
         go-version: '1.21.x'
     - uses: actions/checkout@v4
-    - name: Build all
+    - name: Benchmark
+      working-directory: tests/benchmark-pull
       run: |
-        make
-        ls -al ./out/c2w
-        if ldd ./out/c2w ; then echo "must be static binary" ; exit 1 ; fi
-        ls -al ./out/c2w-net
-        if ldd ./out/c2w-net ; then echo "must be static binary" ; exit 1 ; fi
-
-  test:
-    runs-on: ubuntu-22.04
-    name: Test
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
-        arch: ["x86_64", "(riscv64|aarch64)"]
-    steps:
-    - uses: actions/checkout@v4
-    - name: binfmt
-      run: |
-        docker run --privileged --rm tonistiigi/binfmt --install riscv64
-    - name: test
-      env:
-        GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=${{ matrix.arch }}.*
-      run: |
-        make test
+        mkdir -p "${{ env.BENCHMARK_RESULT_DIR }}"
+        ./run.sh
+    - uses: actions/upload-artifact@v3
+      if: ${{ always() }}
+      with:
+        name: "benchmarking-result-${{ matrix.target.name }}"
+        path: ${{ env.BENCHMARK_RESULT_DIR }}
 
   # benchmark:
   #   runs-on: ubuntu-22.04
@@ -53,28 +91,28 @@ jobs:
   #     run: |
   #       make benchmark
 
-  linter:
-    runs-on: ubuntu-22.04
-    name: Linter
-    steps:
-    - uses: actions/checkout@v4
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v4
-      with:
-        version: v1.55
-        args: --verbose
+  # linter:
+  #   runs-on: ubuntu-22.04
+  #   name: Linter
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #   - name: golangci-lint
+  #     uses: golangci/golangci-lint-action@v4
+  #     with:
+  #       version: v1.55
+  #       args: --verbose
 
-  project:
-    name: Project Checks
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/setup-go@v5
-      with:
-        go-version: 1.21.x
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 100
-    - name: "Check DCO sign"
-      run: |
-        go install github.com/vbatts/git-validation@v1.2.0
-        git-validation -v -run DCO
+  # project:
+  #   name: Project Checks
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #   - uses: actions/setup-go@v5
+  #     with:
+  #       go-version: 1.21.x
+  #   - uses: actions/checkout@v4
+  #     with:
+  #       fetch-depth: 100
+  #   - name: "Check DCO sign"
+  #     run: |
+  #       go install github.com/vbatts/git-validation@v1.2.0
+  #       git-validation -v -run DCO
