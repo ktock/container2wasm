@@ -450,6 +450,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("pull completed") // log used by benchmarking
 
 	ser, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 60))
 	if err != nil {

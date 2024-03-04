@@ -1,0 +1,6 @@
+[
+    { "name": "gcc-9.2.0-esgz", "image": "ghcr.io/stargz-containers/gcc:9.2.0-esgz", "want": "hello", "command": "[\"echo\", \"hello\"]" },
+    { "name": "gcc-9.2.0-org", "image": "ghcr.io/stargz-containers/gcc:9.2.0-org", "want": "hello", "command": "[\"echo\", \"hello\"]" },
+    { "name": "python-3.10-esgz", "image": "ghcr.io/stargz-containers/python:3.10-esgz", "want": "hello", "command": "[\"/bin/sh\", \"-c\", \"python -c 'print(\\\"hello2\\\")'\"]" },
+    { "name": "python-3.10-org", "image": "ghcr.io/stargz-containers/python:3.10-org", "want": "hello", "command": "[\"/bin/sh\", \"-c\", \"python -c 'print(\\\"hello2\\\")'\"]" }
+]

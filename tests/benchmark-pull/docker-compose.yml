@@ -1,0 +1,26 @@
+version: "3"
+services:
+  chrome:
+    image: selenium/node-chrome:122.0
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - SE_EVENT_BUS_HOST=selenium-hub
+      - SE_EVENT_BUS_PUBLISH_PORT=4442
+      - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+  selenium-hub:
+    image: selenium/hub:4.18
+    container_name: selenium-hub
+    hostname: selenium-hub
+  testpage:
+    build:
+      context: ../../
+      dockerfile: ./tests/benchmark-pull/Dockerfile.testpage
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    environment:
+      SELENIUM_URL: http://selenium-hub:4444/wd/hub
+    command: sleep infinity

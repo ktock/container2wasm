@@ -1,0 +1,4 @@
+FROM python:3.12
+COPY ./script/run.py /
+COPY ./script/requirements.txt /
+RUN pip install -r /requirements.txt
