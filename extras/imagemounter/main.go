@@ -3,7 +3,6 @@ package main
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -280,8 +279,8 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to send request")
 	}
 
+	var buf []byte = make([]byte, 1048576)
 	var isEOF uint32
-	var reqBodyD []byte = make([]byte, 1048576)
 	var nwritten uint32 = 0
 	idx := 0
 	chunksize := 0
@@ -292,7 +291,7 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 	for {
 		if idx >= chunksize {
 			// chunk is fully written. full another one.
-			chunksize, err = bodyR.Read(reqBodyD)
+			chunksize, err = bodyR.Read(buf)
 			if err != nil && err != io.EOF {
 				return nil, err
 			}
@@ -303,7 +302,7 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		res := http_writebody(
 			id,
-			uint32(uintptr(unsafe.Pointer(&[]byte(reqBodyD[idx:])[0]))),
+			uint32(uintptr(unsafe.Pointer(&[]byte(buf[idx:])[0]))),
 			uint32(chunksize),
 			uint32(uintptr(unsafe.Pointer(&nwritten))),
 			isEOF,
@@ -333,22 +332,21 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	var respD []byte = make([]byte, 1048576)
 	var respsize uint32
 	var respFull []byte
 	isEOF = 0
 	for {
 		res := http_recv(
 			id,
-			uint32(uintptr(unsafe.Pointer(&[]byte(respD)[0]))),
-			1048576,
+			uint32(uintptr(unsafe.Pointer(&[]byte(buf)[0]))),
+			uint32(len(buf)),
 			uint32(uintptr(unsafe.Pointer(&respsize))),
 			uint32(uintptr(unsafe.Pointer(&isEOF))),
 		)
 		if res != 0 {
 			return nil, fmt.Errorf("failed to receive response")
 		}
-		respFull = append(respFull, respD[:int(respsize)]...)
+		respFull = append(respFull, buf[:int(respsize)]...)
 		if isEOF == 1 {
 			break
 		}
@@ -357,17 +355,17 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 	if err := json.Unmarshal(respFull, &resp); err != nil {
 		return nil, err
 	}
+	respFull = nil
 
 	isEOF = 0
 	pr, pw := io.Pipe()
 	go func() {
-		var body []byte = make([]byte, 1048576)
 		var bodysize uint32
 		for {
 			res := http_readbody(
 				id,
-				uint32(uintptr(unsafe.Pointer(&[]byte(body)[0]))),
-				1048576,
+				uint32(uintptr(unsafe.Pointer(&[]byte(buf)[0]))),
+				uint32(len(buf)),
 				uint32(uintptr(unsafe.Pointer(&bodysize))),
 				uint32(uintptr(unsafe.Pointer(&isEOF))),
 			)
@@ -376,7 +374,7 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 				return
 			}
 			if bodysize > 0 {
-				if _, err := pw.Write(body[:int(bodysize)]); err != nil {
+				if _, err := pw.Write(buf[:int(bodysize)]); err != nil {
 					pw.CloseWithError(err)
 					return
 				}
@@ -385,6 +383,7 @@ func doHttpRoundTrip(req *http.Request) (*http.Response, error) {
 				break
 			}
 		}
+		buf = nil
 		pw.Close()
 	}()
 	r := fetchResponseToHTTPResponse(req, &resp)
@@ -732,7 +731,6 @@ func fsFromImage(ctx context.Context, addr string, platform imagespec.Platform, 
 		}, nil, map[string]esgzremote.Handler{
 			"url-reader": &layerOCILayoutURLHandler{addr},
 		}, reference.Spec{}, newLayerOCILayoutExternalReaderAt(addr))
-		// }, reference.Spec{}, newLayerOCILayoutURLReader(addr))
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -760,16 +758,44 @@ func fsFromImage(ctx context.Context, addr string, platform imagespec.Platform, 
 			defer r.Close()
 			if withDecompression {
 				raw := r
-				zr, err := gzip.NewReader(raw)
+				zr, err := newWasmDecompressor(raw)
 				if err != nil {
 					return nil, err
 				}
-				defer zr.Close()
-				r = zr
+				r = &readerWithCloser{zr, func() error {
+					return raw.Close()
+				}}
 			}
-			data, err := io.ReadAll(r)
-			if err != nil {
-				return nil, err
+
+			var rs [][]byte
+			var curoff int
+			var chunkSize = 10 * 1024 * 1024
+			b := make([]byte, chunkSize)
+			for {
+				n, err := r.Read(b[curoff:])
+				curoff += n
+				if err != nil {
+					if err == io.EOF {
+						rs = append(rs, b[:curoff])
+						break
+					}
+					return nil, err
+				}
+				if curoff == len(b) {
+					rs = append(rs, b)
+					curoff = 0
+					b = make([]byte, chunkSize)
+				}
+			}
+			r.Close()
+			var totalLen int
+			for _, s := range rs {
+				totalLen += len(s)
+			}
+			data := make([]byte, totalLen)
+			var i int
+			for _, s := range rs {
+				i += copy(data[i:], s)
 			}
 			return io.NewSectionReader(bytes.NewReader(data), 0, int64(len(data))), nil
 		})
@@ -887,8 +913,8 @@ func fetchManifestAndConfigOCILayout(ctx context.Context, addr string, platform 
 	return manifest, config, configD, nil
 }
 
-func fetchLayers(ctx context.Context, manifest imagespec.Manifest, config EStargzLayerConfig, hosts esgzsource.RegistryHosts, handlers map[string]esgzremote.Handler, refspec reference.Spec, unlazyReader func(imagespec.Descriptor, bool) (io.ReaderAt, error)) ([]NodeLayer, func(), error) {
-	layers, waitInit, err := getEStargzLayers(ctx, manifest, config, hosts, handlers, refspec)
+func fetchLayers(ctx context.Context, manifest imagespec.Manifest, config EStargzLayerConfig, hosts esgzsource.RegistryHosts, handlers map[string]esgzremote.Handler, refspec reference.Spec, unlazyReader func(imagespec.Descriptor, bool) (io.ReaderAt, error)) (layers []NodeLayer, waitInit func(), err error) {
+	layers, waitInit, err = getEStargzLayers(ctx, manifest, config, hosts, handlers, refspec)
 	if err == nil {
 		return layers, waitInit, nil
 	}
@@ -1094,7 +1120,9 @@ func getEStargzLayers(ctx context.Context, manifest imagespec.Manifest, config E
 					tm.DoPrioritizedTask()
 					defer tm.DonePrioritizedTask()
 					return b.ReadAt(p, offset)
-				}), 0, b.Size()))
+				}), 0, b.Size()),
+				esgzmetadata.WithDecompressors(newGzipDecompressor()),
+			)
 			if err != nil {
 				return err
 			}
@@ -2300,4 +2328,95 @@ func headerToAttr(h *tar.Header) (p9.Attr, p9.QID) {
 		q.Type = p9.ModeFromOS(h.FileInfo().Mode()).QIDType()
 	}
 	return out, q
+}
+
+//go:wasmimport env decompress_init
+func decompress_init(idP uint32) uint32
+
+//go:wasmimport env decompress_write
+func decompress_write(id uint32, bufP uint32, buflen uint32, isEOF uint32) uint32
+
+//go:wasmimport env decompress_read
+func decompress_read(id uint32, bufP uint32, buflen uint32, recvLenP uint32, isEOFP uint32) uint32
+
+type wasmDecompressor struct {
+	id     uint32
+	raw    io.Reader
+	rawEOF bool
+}
+
+func newWasmDecompressor(r io.Reader) (io.Reader, error) {
+	var id uint32
+	res := decompress_init(uint32(uintptr(unsafe.Pointer(&id))))
+	if res != 0 {
+		return nil, fmt.Errorf("failed to init decompressor")
+	}
+	return &wasmDecompressor{id: id, raw: r}, nil
+}
+
+func (d *wasmDecompressor) Read(p []byte) (n int, _ error) {
+	if !d.rawEOF {
+		n, err := d.raw.Read(p)
+		if err != nil && err != io.EOF {
+			return n, err
+		}
+		var isEOF = uint32(0)
+		if err == io.EOF {
+			isEOF = 1
+			d.rawEOF = true
+		}
+		res := decompress_write(d.id,
+			uint32(uintptr(unsafe.Pointer(&[]byte(p)[0]))),
+			uint32(n),
+			isEOF,
+		)
+		if res != 0 {
+			return 0, fmt.Errorf("failed to write compressed data")
+		}
+	}
+	var recvLen uint32
+	var isEOF = uint32(0)
+	res := decompress_read(d.id,
+		uint32(uintptr(unsafe.Pointer(&[]byte(p)[0]))),
+		uint32(len(p)),
+		uint32(uintptr(unsafe.Pointer(&recvLen))),
+		uint32(uintptr(unsafe.Pointer(&isEOF))),
+	)
+	if res != 0 {
+		return 0, fmt.Errorf("failed to read compressed data")
+	}
+	var err error
+	if isEOF == 1 {
+		err = io.EOF
+	}
+	return int(recvLen), err
+}
+
+type gzipDecompressor struct {
+	*estargz.GzipDecompressor
+}
+
+func newGzipDecompressor() *gzipDecompressor {
+	return &gzipDecompressor{&estargz.GzipDecompressor{}}
+}
+
+func (gz *gzipDecompressor) Reader(r io.Reader) (io.ReadCloser, error) {
+	zr, err := newWasmDecompressor(r)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(zr), nil
+}
+
+type readerWithCloser struct {
+	r         io.Reader
+	closeFunc func() error
+}
+
+func (r *readerWithCloser) Read(p []byte) (int, error) {
+	return r.r.Read(p)
+}
+
+func (r *readerWithCloser) Close() error {
+	return r.closeFunc()
 }
