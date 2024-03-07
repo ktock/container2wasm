@@ -2276,7 +2276,7 @@ static int virtio_9p_recv_request(VIRTIODevice *s1, int queue_idx,
     case 30: /* xattrwalk */
         {
             /* not supported yet */
-            err = -P9_ENOTSUP;
+            err = -P9_EOPNOTSUPP;
             goto error;
         }
         break;

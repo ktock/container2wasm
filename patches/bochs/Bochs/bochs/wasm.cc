@@ -531,6 +531,7 @@ static int errno_table[][2] = {
     { P9_ENOSPC, ENOSPC },
     { P9_ENOTEMPTY, ENOTEMPTY },
     { P9_EPROTO, EPROTO },
+    { P9_EOPNOTSUPP, EOPNOTSUPP },
     { P9_ENOTSUP, ENOTSUP },
 };
 
@@ -2413,7 +2414,7 @@ int bx_virtio_9p_ctrl_c::device_recv(int queue_idx, int desc_idx, int read_size,
     case 30: /* xattrwalk */
         {
             /* not supported yet */
-            err = -P9_ENOTSUP;
+            err = -P9_EOPNOTSUPP;
             goto error;
         }
         break;

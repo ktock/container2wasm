@@ -90,6 +90,7 @@ static int errno_table[][2] = {
     { P9_ENOSPC, ENOSPC },
     { P9_ENOTEMPTY, ENOTEMPTY },
     { P9_EPROTO, EPROTO },
+    { P9_EOPNOTSUPP, EOPNOTSUPP },
     { P9_ENOTSUP, ENOTSUP },
 };
 
