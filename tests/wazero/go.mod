@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/containers/gvisor-tap-vsock v0.7.1
-	github.com/tetratelabs/wazero v1.6.0
+	github.com/tetratelabs/wazero v1.7.0
 )
 
 require (
