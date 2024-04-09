@@ -1,5 +1,5 @@
 import { Event, EventType, Subscription, SubscriptionClock, SubscriptionFdReadWrite, SubscriptionU, wasiHackSocket } from './wasi-util';
-import { WASI, PreopenDirectory } from "@bjorn3/browser_wasi_shim";
+import { WASI, PreopenDirectory, File } from "@bjorn3/browser_wasi_shim";
 import * as wasitype from "@bjorn3/browser_wasi_shim";
 
 export function startContainer(info, cargs, ttyClient) {
@@ -423,12 +423,12 @@ function getCertDir(cert) {
             var o = ret.fd_obj;
             ret.fd_obj.fd_pread = (view8, iovs, offset) => {
                 var old_offset = o.file_pos;
-                var r = o.fd_seek(offset, WHENCE_SET);
+                var r = o.fd_seek(offset, wasitype.wasi.WHENCE_SET);
                 if (r.ret != 0) {
                     return { ret: -1, nread: 0 };
                 }
                 var read_ret = o.fd_read(view8, iovs);
-                r = o.fd_seek(old_offset, WHENCE_SET);
+                r = o.fd_seek(old_offset, wasitype.wasi.WHENCE_SET);
                 if (r.ret != 0) {
                     return { ret: -1, nread: 0 };
                 }

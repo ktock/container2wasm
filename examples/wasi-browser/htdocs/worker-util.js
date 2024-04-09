@@ -184,7 +184,7 @@ function wasiHackSocket(wasi, listenfd, connfd) {
     }
     var _fd_prestat_get = wasi.wasiImport.fd_prestat_get;
     wasi.wasiImport.fd_prestat_get = (fd, prestat_ptr) => {
-        if ((fd == listenfd) || (fd <= connfd)){ // reserve socket-related fds
+        if ((fd == listenfd) || (fd == connfd)){ // reserve socket-related fds
             let buffer = new DataView(wasi.inst.exports.memory.buffer);
             buffer.setUint8(prestat_ptr, 1);
             return 0;
