@@ -132,9 +132,6 @@ function connect(name, shared, toNet) {
                     if (timeoutHandler) {
                         clearTimeout(timeoutHandler);
                         timeoutHandler = null;
-                    } else {
-                        Atomics.store(streamCtrl, 0, 1);
-                        Atomics.notify(streamCtrl, 0);
                     }
                     break;
                 case "recv-is-readable":
@@ -166,17 +163,14 @@ function connect(name, shared, toNet) {
                                     Atomics.notify(toNetNotify, 0);
                                     clearTimeout(timeoutHandler);
                                     timeoutHandler = null;
-                                    // streamStatus[0] = 0;
-                                    Atomics.store(streamCtrl, 0, 1);
-                                    Atomics.notify(streamCtrl, 0);
                                 }, 0.01);
                             }
                             pollBuf();
-                            return;
+                        } else {
+                            streamStatus[0] = 0; // timeout
+                            Atomics.store(toNetNotify, 0, -1);
+                            Atomics.notify(toNetNotify, 0);
                         }
-                        streamStatus[0] = 0; // timeout
-                        Atomics.store(toNetNotify, 0, -1);
-                        Atomics.notify(toNetNotify, 0);
                     }
                     break;
                 case "http_send":
