@@ -132,9 +132,6 @@ function connect(name, shared, toNet) {
                     if (timeoutHandler) {
                         clearTimeout(timeoutHandler);
                         timeoutHandler = null;
-                    } else {
-                        Atomics.store(streamCtrl, 0, 1);
-                        Atomics.notify(streamCtrl, 0);
                     }
                     break;
                 case "recv-is-readable":
@@ -166,17 +163,14 @@ function connect(name, shared, toNet) {
                                     Atomics.notify(toNetNotify, 0);
                                     clearTimeout(timeoutHandler);
                                     timeoutHandler = null;
-                                    // streamStatus[0] = 0;
-                                    Atomics.store(streamCtrl, 0, 1);
-                                    Atomics.notify(streamCtrl, 0);
                                 }, 0.01);
                             }
                             pollBuf();
-                            return;
+                        } else {
+                            streamStatus[0] = 0; // timeout
+                            Atomics.store(toNetNotify, 0, -1);
+                            Atomics.notify(toNetNotify, 0);
                         }
-                        streamStatus[0] = 0; // timeout
-                        Atomics.store(toNetNotify, 0, -1);
-                        Atomics.notify(toNetNotify, 0);
                     }
                     break;
                 case "http_send":
@@ -223,31 +217,66 @@ function connect(name, shared, toNet) {
                             connObj.request.body = connObj.reqBodybuf;
                         }
                         fetch(connObj.address, connObj.request).then((resp) => {
-                            var headers = {};
-                            for (const key of resp.headers.keys()) {
-                                headers[key] = resp.headers.get(key);
-                            }
-                            connObj.response = new TextEncoder().encode(JSON.stringify({
-                                bodyUsed: resp.bodyUsed,
-                                headers: headers,
-                                redirected: resp.redirected,
-                                status: resp.status,
-                                statusText: resp.statusText,
-                                type: resp.type,
-                                url: resp.url
-                            })),
                             connObj.done = false;
                             connObj.respBodybuf = new Uint8Array(0);
                             if (resp.ok) {
                                 resp.arrayBuffer().then((data) => {
+                                    var headers = {};
+                                    for (const key of resp.headers.keys()) {
+                                        if (data.byteLength > 0) {
+                                            if (key == "content-encoding") {
+                                                continue;
+                                            }
+                                            if (key == "content-length") {
+                                                headers[key] = data.byteLength.toString();
+                                                continue;
+                                            }
+                                        }
+                                        headers[key] = resp.headers.get(key);
+                                    }
+                                    connObj.response = new TextEncoder().encode(JSON.stringify({
+                                        bodyUsed: resp.bodyUsed,
+                                        headers: headers,
+                                        redirected: resp.redirected,
+                                        status: resp.status,
+                                        statusText: resp.statusText,
+                                        type: resp.type,
+                                        url: resp.url
+                                    }));
                                     connObj.respBodybuf = new Uint8Array(data);
                                     connObj.done = true;
                                 }).catch((error) => {
+                                    var headers = {};
+                                    for (const key of resp.headers.keys()) {
+                                        headers[key] = resp.headers.get(key);
+                                    }
+                                    connObj.response = new TextEncoder().encode(JSON.stringify({
+                                        bodyUsed: resp.bodyUsed,
+                                        headers: headers,
+                                        redirected: resp.redirected,
+                                        status: resp.status,
+                                        statusText: resp.statusText,
+                                        type: resp.type,
+                                        url: resp.url
+                                    }));
                                     connObj.respBodybuf = new Uint8Array(0);
                                     connObj.done = true;
                                     console.log("failed to fetch body: " + error);
                                 });
                             } else {
+                                var headers = {};
+                                for (const key of resp.headers.keys()) {
+                                    headers[key] = resp.headers.get(key);
+                                }
+                                connObj.response = new TextEncoder().encode(JSON.stringify({
+                                    bodyUsed: resp.bodyUsed,
+                                    headers: headers,
+                                    redirected: resp.redirected,
+                                    status: resp.status,
+                                    statusText: resp.statusText,
+                                    type: resp.type,
+                                    url: resp.url
+                                }));
                                 connObj.done = true;
                             }
                         }).catch((error) => {

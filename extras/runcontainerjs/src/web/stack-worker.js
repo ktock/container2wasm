@@ -592,9 +592,11 @@ function sockWaitForReadable(timeout){
     streamCtrl[0] = 0;
     Atomics.store(toNetNotify, 0, 0);
     postMessage({type: "recv-is-readable", timeout: timeout});
+    Atomics.wait(streamCtrl, 0, 0);
     Atomics.wait(toNetNotify, 0, 0);
     var res = Atomics.load(toNetNotify, 0);
 
+    streamCtrl[0] = 0;
     postMessage({type: "recv-is-readable-cancel"});
     Atomics.wait(streamCtrl, 0, 0);
 
