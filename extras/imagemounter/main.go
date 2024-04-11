@@ -1806,18 +1806,20 @@ func (a *applier) ApplyNodes(nodes NodeLayer) error {
 		if _, err := walkDown(a.n, filepath.Join(dir, base[len(whiteoutPrefix):]), getnode); err == nil {
 			p, err := walkDown(a.n, dir, getnode)
 			if err != nil {
-				return fmt.Errorf("parent node of whiteout %q is not found: %w", w, err)
+				log.Printf("parent node of whiteout %q is not found: %v\n", w, err)
+			} else {
+				delete(p.children, base)
 			}
-			delete(p.children, base)
 		}
 	}
 	for _, w := range nodes.opaqueWhiteouts {
 		dir, _ := filepath.Split(w)
 		p, err := walkDown(a.n, dir, getnode)
 		if err != nil {
-			return fmt.Errorf("parent node of whiteout %q is not found: %w", w, err)
+			log.Printf("parent node of opaque whiteout %q is not found: %v\n", w, err)
+		} else {
+			p.children = nil
 		}
-		p.children = nil
 	}
 	var err error
 	a.n, err = mergeNode(a.n, nodes.node)
