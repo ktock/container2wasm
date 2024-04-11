@@ -43,4 +43,4 @@ $ docker run --rm -p 127.0.0.1:8083:80 \
          --entrypoint=/bin/sh httpd -c 'echo "Include conf/extra/xterm-pty.conf" >> /usr/local/apache2/conf/httpd.conf && httpd-foreground'
 ```
 
-For more details about imagemounter and other examples (e.g. using container registry for image distribution), please see also [`../../extras/imagemounter/README.md`](./../../extras/imagemounter/README.md).
+For more details about imagemounter and other examples (e.g. eStargz, container registry for image distribution, etc.), please see also [`../../extras/imagemounter/README.md`](./../../extras/imagemounter/README.md).
