@@ -71,8 +71,6 @@ function connect(name, shared, toNet) {
         return curID;
     }
     function serveData(data, len) {
-        if (streamData.byteLength < data.byteLength)
-            console.log("small buffer(net)" + streamData.byteLength + " " + data.byteLength);
         var length = len;
         if (length > streamData.byteLength)
             length = streamData.byteLength;
@@ -85,8 +83,6 @@ function connect(name, shared, toNet) {
         return remain;
     }
     function serveDataOffset(data, off, len) {
-        if (streamData.byteLength < data.byteLength)
-            console.log("small buffer(net)" + streamData.byteLength + " " + data.byteLength);
         var length = len;
         if (length > streamData.byteLength)
             length = streamData.byteLength;
@@ -142,7 +138,6 @@ function connect(name, shared, toNet) {
                     } else {
                         if ((req_.timeout != undefined) && (req_.timeout > 0)) {
                             if (timeoutHandler) {
-                                console.log("ONGOING POLL (stack)");
                                 clearTimeout(timeoutHandler);
                                 timeoutHandler = null;
                                 timeoutDeadlineMilli = null;
