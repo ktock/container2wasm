@@ -160,3 +160,45 @@ $ mkdir /tmp/imageout/
 $ docker buildx create --name container --driver=docker-container
 $ echo "FROM $IMAGE" | docker buildx build --builder=container --output type=oci,dest=- - | tar -C /tmp/imageout/ -xf -
 ```
+
+## Lazy pulling of eStargz
+
+imagemounter also supports lazy pulling of eStargz image.
+
+Lazy pulling is a technique of pulling container images for shortening the latency of loading image.
+This allows the container to start before the entier image contents becoming locally available.
+Instead, necessary chunks of contents (e.g. files) are downloaded from the image server on-demand.
+
+eStargz is a OCI-compatible image format for lazy pulling.
+Please refer to [stargz-snapshotter](https://github.com/containerd/stargz-snapshotter) project for more details.
+
+eStargz image can be created using `docker buildx` command with BuildKit >= v0.10.
+Specify `compression=estargz` option.
+
+> NOTE: eStargz-based lazy pulling is also possible from container registries not only from HTTP(S) server.
+
+```console
+$ IMAGE=gcc:13.2
+$ mkdir /tmp/gcc-13.2-org/ /tmp/gcc-13.2-esgz/
+$ docker buildx create --name container --driver=docker-container
+$ echo "FROM $IMAGE" | docker buildx build --builder=container --output type=oci,dest=- - | tar -C /tmp/gcc-13.2-org/ -xf -
+$ echo "FROM $IMAGE" | docker buildx build --builder=container --output type=oci,oci-mediatype=true,compression=estargz,force-compression=true,dest=- - | tar -C /tmp/gcc-13.2-esgz/ -xf -
+```
+
+The following runs the image on browser.
+The above eStargz image is located at `http://localhost:8084/gcc-13.2-esgz/`, legacy(non-eStargz) image is located at `http://localhost:8084/gcc-13.2-org/`.
+That image can run on browser via `http://localhost:8084/?image=http://localhost:8084/gcc-13.2-esgz/` that fetches the container image into the browser with lazy pulling and launches it.
+
+```console
+$ mkdir -p /tmp/out-js4/
+$ cp -R ./examples/no-conversion/* /tmp/out-js4/
+$ cp -R /tmp/gcc-13.2-org /tmp/out-js4/htdocs/
+$ cp -R /tmp/gcc-13.2-esgz /tmp/out-js4/htdocs/
+$ make imagemounter.wasm && cat ./out/imagemounter.wasm | gzip >  /tmp/out-js4/htdocs/imagemounter.wasm.gzip
+$ cat out.wasm | gzip >  /tmp/out-js4/htdocs/out.wasm.gzip
+$ ( cd extras/runcontainerjs ; npx webpack && cp -R ./dist /tmp/out-js4/htdocs/ )
+$ docker run --rm -p 127.0.0.1:8084:80 \
+         -v "/tmp/out-js4/htdocs:/usr/local/apache2/htdocs/:ro" \
+         -v "/tmp/out-js4/xterm-pty.conf:/usr/local/apache2/conf/extra/xterm-pty.conf:ro" \
+         --entrypoint=/bin/sh httpd -c 'echo "Include conf/extra/xterm-pty.conf" >> /usr/local/apache2/conf/httpd.conf && httpd-foreground'
+```
