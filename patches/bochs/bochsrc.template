@@ -6,7 +6,7 @@ ata0-master: type=cdrom, path="/pack/boot.iso", status=inserted
 usb_ehci: port1=cdrom, options1="path:/pack/rootfs.bin, speed:high"
 boot: cdrom
 mouse: enabled=0
-cpu: ips=40000000
+cpu: ips=40000000, model=corei7_haswell_4770
 clock: sync=both, rtc_sync=1, time0=local
 display_library: nogui
 vga: extension=none, realtime=0, update_freq=1, ddc=disabled
