@@ -464,7 +464,7 @@ bool BX_CPP_AttrRegparmN(2) BX_CPU_C::handle_unknown_rdmsr(Bit32u index, Bit64u 
 #endif
     {
       // failed to find the MSR, could #GP or ignore it silently
-      BX_ERROR(("RDMSR: Unknown register %#x", index));
+      BX_DEBUG(("RDMSR: Unknown register %#x", index));
 
       if (! BX_CPU_THIS_PTR ignore_bad_msrs)
         return 0; // will result in #GP fault due to unknown MSR

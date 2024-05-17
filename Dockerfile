@@ -470,7 +470,7 @@ RUN LOGGING_FLAG=--disable-logging && \
     CXXFLAGS="${CFLAGS}" \
     ./configure --host wasm32-unknown-wasi --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci \
     --disable-large-ramfile --disable-show-ips --disable-stats ${LOGGING_FLAG} \
-    --enable-repeat-speedups --enable-fast-function-calls --disable-trace-linking --enable-handlers-chaining # TODO: --enable-trace-linking causes "out of bounds memory access"
+    --enable-repeat-speedups --enable-fast-function-calls --disable-trace-linking --enable-handlers-chaining --enable-avx # TODO: --enable-trace-linking causes "out of bounds memory access"
 RUN make -j$(nproc) bochs EMU_DEPS="/tools/wasi-vfs/libwasi_vfs.a /jmp/jmp /vfs/vfs.o -lrt"
 RUN /binaryen/binaryen-version_${BINARYEN_VERSION}/bin/wasm-opt bochs --asyncify -O2 -o bochs.async --pass-arg=asyncify-ignore-imports
 RUN mv bochs.async bochs
@@ -504,7 +504,7 @@ RUN LOGGING_FLAG=--disable-logging && \
     CXXFLAGS="${CFLAGS}" \
     emconfigure ./configure --host wasm32-unknown-emscripten --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci \
     --disable-large-ramfile --disable-show-ips --disable-stats ${LOGGING_FLAG} \
-    --enable-repeat-speedups --enable-fast-function-calls --disable-trace-linking --enable-handlers-chaining # TODO: --enable-trace-linking causes "too much recursion"
+    --enable-repeat-speedups --enable-fast-function-calls --disable-trace-linking --enable-handlers-chaining --enable-avx # TODO: --enable-trace-linking causes "too much recursion"
 RUN emmake make -j$(nproc) bochs EMU_DEPS="--preload-file /pack"
 RUN mkdir -p /out/ && mv bochs /out/out.js && mv bochs.wasm /out/ && mv bochs.data /out/
 
