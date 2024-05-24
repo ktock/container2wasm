@@ -37,7 +37,9 @@ RUN git clone -b ${SOURCE_REPO_VERSION} ${SOURCE_REPO} /assets
 FROM scratch AS assets
 COPY --link --from=assets-base /assets /
 
-FROM golang:1.21-bullseye AS golang-base
+FROM golang:1.22-bullseye AS golang-base
+FROM golang:1.21-bullseye AS golang-1.21-base
+# go 1.21 is for runc; TODO: use go 1.22
 
 FROM golang-base AS bundle-dev
 ARG TARGETPLATFORM
@@ -122,7 +124,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     GOARCH=riscv64 go build -ldflags "-s -w -extldflags '-static'" -tags "osusergo netgo static_build" -o /out/init ./cmd/init
 
-FROM golang-base AS runc-riscv64-dev
+FROM golang-1.21-base AS runc-riscv64-dev
 ARG RUNC_VERSION
 RUN apt-get update -y && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make gperf
 RUN --mount=type=cache,target=/root/.cache/go-build \
@@ -332,7 +334,7 @@ RUN make LDFLAGS=--static -j$(nproc)
 RUN for i in $(./busybox --list) ; do ln -s busybox /out/bin/$i ; done
 RUN mkdir -p /out/usr/share/udhcpc/ && cp ./examples/udhcp/simple.script /out/usr/share/udhcpc/default.script
 
-FROM golang-base AS runc-amd64-dev
+FROM golang-1.21-base AS runc-amd64-dev
 ARG RUNC_VERSION
 RUN apt-get update -y && apt-get install -y git make gperf
 RUN --mount=type=cache,target=/root/.cache/go-build \

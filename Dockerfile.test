@@ -4,29 +4,29 @@ ARG BUILDX_VERSION=0.13.1
 ARG DOCKER_VERSION=26.0.0
 ARG WAMR_VERSION=2.0.0
 ARG WASMEDGE_VERSION=0.14.0
-ARG GOLANG_VERSION=1.21.6
+ARG GOLANG_VERSION=1.22.3
 ARG WASMER_VERSION=v4.2.5
 ARG WASMTIME_VERSION=21.0.1
 
 FROM docker:${DOCKER_VERSION}-dind AS dind
 FROM docker/buildx-bin:${BUILDX_VERSION} AS buildx
 
-FROM golang:1.21 AS wazero-test-dev
+FROM golang:1.22 AS wazero-test-dev
 COPY ./tests/wazero /wazero
 WORKDIR /wazero
 RUN go build -o /out/wazero-test main.go
 
-FROM golang:1.21 AS httphello-dev
+FROM golang:1.22 AS httphello-dev
 COPY ./tests/httphello /httphello
 WORKDIR /httphello
 RUN go build -o /out/httphello main.go
 
-FROM golang:1.21 AS c2w-net-proxy-test-dev
+FROM golang:1.22 AS c2w-net-proxy-test-dev
 COPY ./tests/c2w-net-proxy-test /c2w-net-proxy-test
 WORKDIR /c2w-net-proxy-test
 RUN go build -o /out/c2w-net-proxy-test main.go
 
-FROM golang:1.21 AS imagemounter-test-dev
+FROM golang:1.22 AS imagemounter-test-dev
 COPY ./tests/imagemounter-test /imagemounter-test
 WORKDIR /imagemounter-test
 RUN go build -o /out/imagemounter-test main.go
