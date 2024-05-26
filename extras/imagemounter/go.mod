@@ -6,7 +6,7 @@ require (
 	github.com/containerd/containerd v1.7.8
 	github.com/containerd/stargz-snapshotter v0.15.1
 	github.com/containerd/stargz-snapshotter/estargz v0.15.1
-	github.com/containers/gvisor-tap-vsock v0.7.0
+	github.com/containers/gvisor-tap-vsock v0.7.3
 	github.com/hugelgupf/p9 v0.0.0-00010101000000-000000000000
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0-rc5
@@ -30,7 +30,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/google/btree v1.0.1 // indirect
+	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -38,7 +38,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.4 // indirect
 	github.com/insomniacslk/dhcp v0.0.0-20220504074936-1ca156eafb9f // indirect
 	github.com/klauspost/compress v1.17.7 // indirect
-	github.com/miekg/dns v1.1.55 // indirect
+	github.com/miekg/dns v1.1.58 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -47,16 +47,16 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/otel v1.14.0 // indirect
 	go.opentelemetry.io/otel/trace v1.14.0 // indirect
-	golang.org/x/crypto v0.14.0 // indirect
-	golang.org/x/mod v0.11.0 // indirect
-	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/crypto v0.18.0 // indirect
+	golang.org/x/mod v0.14.0 // indirect
+	golang.org/x/net v0.20.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	golang.org/x/tools v0.10.0 // indirect
+	golang.org/x/tools v0.17.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d // indirect
 	google.golang.org/grpc v1.59.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
-	gvisor.dev/gvisor v0.0.0-20230715022000-fd277b20b8db // indirect
+	gvisor.dev/gvisor v0.0.0-20231023213702-2691a8f9b1cf // indirect
 	inet.af/tcpproxy v0.0.0-20220326234310-be3ee21c9fa0 // indirect
 )
 
