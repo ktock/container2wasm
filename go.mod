@@ -3,7 +3,7 @@ module github.com/ktock/container2wasm
 go 1.21
 
 require (
-	github.com/containerd/containerd v1.7.17
+	github.com/containerd/containerd v1.7.18
 	github.com/containers/gvisor-tap-vsock v0.7.3
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/opencontainers/runc v1.1.12
@@ -19,6 +19,7 @@ require (
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/continuity v0.4.2 // indirect
+	github.com/containerd/errdefs v0.1.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/ttrpc v1.2.4 // indirect
 	github.com/containerd/typeurl/v2 v2.1.1 // indirect
@@ -47,7 +48,7 @@ require (
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.17.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/grpc v1.59.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gvisor.dev/gvisor v0.0.0-20231023213702-2691a8f9b1cf // indirect
