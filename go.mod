@@ -6,7 +6,7 @@ require (
 	github.com/containerd/containerd v1.7.18
 	github.com/containers/gvisor-tap-vsock v0.7.3
 	github.com/opencontainers/image-spec v1.1.0
-	github.com/opencontainers/runc v1.1.12
+	github.com/opencontainers/runc v1.1.13
 	github.com/opencontainers/runtime-spec v1.2.0
 	github.com/urfave/cli v1.22.15
 	golang.org/x/net v0.26.0
