@@ -1,8 +1,8 @@
 importScripts("https://cdn.jsdelivr.net/npm/xterm-pty@0.9.4/workerTools.js");
-importScripts(location.origin + "/browser_wasi_shim/index.js");
-importScripts(location.origin + "/browser_wasi_shim/wasi_defs.js");
-importScripts(location.origin + "/worker-util.js");
-importScripts(location.origin + "/wasi-util.js");
+importScripts("./browser_wasi_shim/index.js");
+importScripts("./browser_wasi_shim/wasi_defs.js");
+importScripts("./worker-util.js");
+importScripts("./wasi-util.js");
 
 onmessage = (msg) => {
     if (serveIfInitMsg(msg)) {
@@ -10,6 +10,7 @@ onmessage = (msg) => {
     }
     var ttyClient = new TtyClient(msg.data);
     var args = [];
+    //var args = ['arg0', '/usr/bin/date'];
     var env = [];
     var fds = [];
     var netParam = getNetParam();
@@ -103,6 +104,13 @@ function wasiHack(wasi, ttyClient, connfd) {
                 if (buf.length == 0) {
                     continue;
                 }
+		// add for TEST
+                console.log("fd buf:"+buf);
+                //console.log("fd buf Array:"+Array.from(buf) );
+                //console.log("fd buf String.fromCharCode:"+String.fromCharCode(Array.from(buf)) );
+                buf.forEach(ccc => {
+                        console.log("stdout:"+ String.fromCharCode(ccc) );
+                });
                 ttyClient.onWrite(Array.from(buf));
                 wtotal += buf.length;
             }
