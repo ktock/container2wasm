@@ -315,11 +315,11 @@ Re-compilation (and possibe re-implementation) of the application is needed.
 
 ## Acknowledgement
 
-- container2wasi itself is licensed under Apache 2.0 but the generated WASM image will include third-pirty softwares:
+- container2wasm itself is licensed under Apache 2.0 but the generated WASM image will include third-pirty softwares:
   - Bochs ([GNU Lesser General Public License v2.1](https://github.com/bochs-emu/Bochs/blob/master/LICENSE)) https://bochs.sourceforge.io/
-    - Source code is contained in ([`./patches/bochs`](./patches/bochs)). Bochs is modified by our project for making it work with containers
+    - needs patches to make it work with containers: https://github.com/ktock/Bochs
   - TinyEMU ([MIT License](https://opensource.org/license/mit/)) https://bellard.org/tinyemu/
-    - Source code is contained in ([`./patches/tinyemu`](./patches/tinyemu)). TinyEMU is modified by our project for making it work with containers
+    - needs patches to make it work with containers: https://github.com/ktock/tinyemu-c2w
   - GRUB ([GNU General Public License Version 3](https://www.gnu.org/licenses/gpl.html)): https://www.gnu.org/software/grub/
   - BBL(riscv-pk) ([license](https://github.com/riscv-software-src/riscv-pk/blob/master/LICENSE)): https://github.com/riscv-software-src/riscv-pk
   - Linux ([GNU General Public License version 2](https://github.com/torvalds/linux/blob/master/COPYING)): https://github.com/torvalds/linux/
