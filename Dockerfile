@@ -187,7 +187,7 @@ ENV CC="riscv64-linux-gnu-gcc -static"
 RUN cmake . && make && mkdir /out/ && mv tini /out/
 
 FROM ubuntu:22.04 AS rootfs-riscv64-dev
-RUN apt-get update -y && apt-get install -y mkisofs
+RUN apt-get update -y && apt-get install -y squashfs-tools
 COPY --link --from=busybox-riscv64-dev /out/ /rootfs/
 COPY --link --from=binfmt-dev / /rootfs/
 COPY --link --from=runc-riscv64-dev /out/runc /rootfs/sbin/runc
@@ -196,8 +196,7 @@ COPY --link --from=init-riscv64-dev /out/init /rootfs/sbin/init
 COPY --link --from=vmtouch-riscv64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-riscv64-dev /out/tini /rootfs/sbin/tini
 RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
-RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
-# RUN isoinfo -i /out/rootfs.bin -l
+RUN mkdir /out/ && mksquashfs /rootfs /out/rootfs.bin
 
 FROM ubuntu:22.04 AS tinyemu-config-dev
 ARG LINUX_LOGLEVEL
@@ -393,7 +392,7 @@ RUN git clone https://github.com/hoytech/vmtouch.git && \
     mkdir /out && mv vmtouch /out/
 
 FROM ubuntu:22.04 AS rootfs-amd64-dev
-RUN apt-get update -y && apt-get install -y mkisofs
+RUN apt-get update -y && apt-get install -y squashfs-tools
 COPY --link --from=busybox-amd64-dev /out/ /rootfs/
 COPY --link --from=runc-amd64-dev /out/runc /rootfs/sbin/runc
 COPY --link --from=bundle-dev /out/ /rootfs/
@@ -401,8 +400,7 @@ COPY --link --from=init-amd64-dev /out/init /rootfs/sbin/init
 COPY --link --from=vmtouch-amd64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-amd64-dev /out/tini /rootfs/sbin/tini
 RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
-RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
-# RUN isoinfo -i /out/rootfs.bin -l
+RUN mkdir /out/ && mksquashfs /rootfs /out/rootfs.bin
 
 FROM ubuntu:22.04 AS bochs-config-dev
 ARG VM_MEMORY_SIZE_MB
