@@ -208,7 +208,7 @@ func doInit() error {
 				bundlePath = filepath.Join("/mnt/wasi0", info.bundle)
 			}
 			if !fsExists(bundlePath) {
-				return fmt.Errorf("can't find external bundle")
+				return fmt.Errorf("can't find external bundle in %s", bundlePath)
 			}
 
 		}
