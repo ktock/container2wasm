@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gotest.tools/v3/assert"
 
@@ -200,6 +201,7 @@ ENTRYPOINT ["/httphello", "0.0.0.0:80"]
 			},
 			Want: func(t *testing.T, env utils.Env, in io.Writer, out io.Reader) {
 				port := utils.ReadInt(t, filepath.Join(env.Workdir, "httphello-port"))
+				time.Sleep(5 * time.Second) // FIXME: enable to wait for readiness of c2w-net
 				cmd := exec.Command("wget", "-q", "-O", "-", fmt.Sprintf("localhost:%d", port))
 				cmd.Stderr = os.Stderr
 				d, err := cmd.Output()
