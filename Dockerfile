@@ -10,6 +10,10 @@ ARG BINARYEN_VERSION=114
 ARG BUSYBOX_VERSION=1_36_1
 ARG RUNC_VERSION=v1.1.12
 
+#ARG FILESYSTEM=iso
+#ARG FILESYSTEM=squash
+ARG FILESYSTEM=ero
+
 # ARG LINUX_LOGLEVEL=0
 # ARG INIT_DEBUG=false
 ARG LINUX_LOGLEVEL=7
@@ -187,7 +191,8 @@ ENV CC="riscv64-linux-gnu-gcc -static"
 RUN cmake . && make && mkdir /out/ && mv tini /out/
 
 FROM ubuntu:22.04 AS rootfs-riscv64-dev
-RUN apt-get update -y && apt-get install -y squashfs-tools
+ARG FILESYSTEM
+RUN apt-get update -y && apt-get install -y squashfs-tools erofs-utils mkisofs
 COPY --link --from=busybox-riscv64-dev /out/ /rootfs/
 COPY --link --from=binfmt-dev / /rootfs/
 COPY --link --from=runc-riscv64-dev /out/runc /rootfs/sbin/runc
@@ -196,7 +201,17 @@ COPY --link --from=init-riscv64-dev /out/init /rootfs/sbin/init
 COPY --link --from=vmtouch-riscv64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-riscv64-dev /out/tini /rootfs/sbin/tini
 RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
-RUN mkdir /out/ && mksquashfs /rootfs /out/rootfs.bin
+RUN mkdir /out/
+RUN echo "Generating rootfs.bin with $FILESYSTEM"
+RUN if [ "$FILESYSTEM" = "squash" ]; then \
+      mksquashfs /rootfs /out/rootfs.bin; \
+    elif [ "$FILESYSTEM" = "iso" ]; then \
+      mkisofs -o /out/rootfs.bin /rootfs; \
+    elif [ "$FILESYSTEM" = "ero" ]; then \
+      mkfs.erofs /out/rootfs.bin /rootfs; \
+    else \
+      echo "Unsupported FILESYSTEM type: $FILESYSTEM" && exit 1; \
+    fi
 
 FROM ubuntu:22.04 AS tinyemu-config-dev
 ARG LINUX_LOGLEVEL
@@ -392,7 +407,8 @@ RUN git clone https://github.com/hoytech/vmtouch.git && \
     mkdir /out && mv vmtouch /out/
 
 FROM ubuntu:22.04 AS rootfs-amd64-dev
-RUN apt-get update -y && apt-get install -y squashfs-tools
+ARG FILESYSTEM
+RUN apt-get update -y && apt-get install -y squashfs-tools erofs-utils mkisofs
 COPY --link --from=busybox-amd64-dev /out/ /rootfs/
 COPY --link --from=runc-amd64-dev /out/runc /rootfs/sbin/runc
 COPY --link --from=bundle-dev /out/ /rootfs/
@@ -400,7 +416,17 @@ COPY --link --from=init-amd64-dev /out/init /rootfs/sbin/init
 COPY --link --from=vmtouch-amd64-dev /out/vmtouch /rootfs/bin/
 COPY --link --from=tini-amd64-dev /out/tini /rootfs/sbin/tini
 RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
-RUN mkdir /out/ && mksquashfs /rootfs /out/rootfs.bin
+RUN mkdir /out/
+RUN echo "Generating rootfs.bin with ${FILESYSTEM}"
+RUN if [ "${FILESYSTEM}" = "squash" ]; then \
+      mksquashfs /rootfs /out/rootfs.bin; \
+    elif [ "${FILESYSTEM}" = "iso" ]; then \
+      mkisofs -o /out/rootfs.bin /rootfs; \
+    elif [ "${FILESYSTEM}" = "ero" ]; then \
+      mkfs.erofs /out/rootfs.bin /rootfs; \
+    else \
+      echo "Unsupported FILESYSTEM type: ${FILESYSTEM}" && exit 1; \
+    fi
 
 FROM ubuntu:22.04 AS bochs-config-dev
 ARG VM_MEMORY_SIZE_MB

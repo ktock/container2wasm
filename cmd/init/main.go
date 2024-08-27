@@ -158,6 +158,7 @@ func doInit() error {
 
 	if info.withNet {
 		if info.mac != "" {
+			log.Printf("Setting up MAC:\n%s\n", info.mac)
 			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "down").CombinedOutput(); err != nil {
 				return fmt.Errorf("failed eth0 down: %v: %w", string(o), err)
 			}
@@ -165,9 +166,12 @@ func doInit() error {
 				return fmt.Errorf("failed change mac address of eth0: %v: %w", string(o), err)
 			}
 		}
+		log.Println("Ethernet UP...")
 		if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "up").CombinedOutput(); err != nil {
 			return fmt.Errorf("failed eth0 up: %v: %w", string(o), err)
 		}
+
+		log.Println("DHCP...")
 		if o, err := exec.Command("udhcpc", "-i", "eth0").CombinedOutput(); err != nil {
 			return fmt.Errorf("failed udhcpc: %w", err)
 		} else if cfg.Debug {
@@ -234,8 +238,14 @@ func doInit() error {
 				return fmt.Errorf("cannot bind mount 9p rootfs to %q: %w", cfg.Container.ImageRootfsPath, err)
 			}
 		} else {
-			cmd := exec.Command("/bin/mount", "-t", "squashfs", "-o", "loop", filepath.Join(bundlePath, "rootfs.bin"), cfg.Container.ImageRootfsPath)
-			if _, err := cmd.Output(); err != nil {
+			var err error
+			for _, fsType := range []string{"erofs", "squashfs", "iso9660"} {
+				cmd := exec.Command("/bin/mount", "-t", fsType, "-o", "loop", filepath.Join(bundlePath, "rootfs.bin"), cfg.Container.ImageRootfsPath)
+				if _, err = cmd.Output(); err == nil {
+					break
+				}
+			}
+			if err != nil {
 				return fmt.Errorf("failed mounting oci with %s", string(err.(*exec.ExitError).Stderr))
 			}
 		}

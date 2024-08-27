@@ -49,6 +49,11 @@ func main() {
 			Usage: "target architecture of the source image to use",
 			Value: "amd64",
 		},
+		cli.StringFlag{
+			Name:  "rootfs-type",
+			Usage: "file system used for rootfs",
+			Value: "ero",
+		},
 	}
 	app.Action = rootAction
 	if err := app.Run(os.Args); err != nil {
@@ -73,6 +78,11 @@ func rootAction(clicontext *cli.Context) error {
 	arch := clicontext.String("target-arch")
 	if arch == "" {
 		arch = "amd64"
+	}
+
+	fstype := clicontext.String("rootfs-type")
+	if fstype == "" {
+		fstype = "ero"
 	}
 
 	builderPath, err := exec.LookPath(clicontext.String("builder"))
@@ -177,17 +187,24 @@ func rootAction(clicontext *cli.Context) error {
 		return err
 	}
 
-	return createSquashFSFromFolder(path.Join(dstImgPath, "rootfs"), path.Join(dstImgPath, "rootfs.bin"))
+	switch fstype {
+	case "ero":
+		return createEroFSFromFolder(path.Join(dstImgPath, "rootfs"), path.Join(dstImgPath, "rootfs.bin"))
+	case "squash":
+		return createSquashFSFromFolder(path.Join(dstImgPath, "rootfs"), path.Join(dstImgPath, "rootfs.bin"))
+	default:
+		return fmt.Errorf("%s is not a valid entry for rootfs filesystem", fstype)
+	}
 }
 
-func createSquashFSFromFolder(folderPath, squashfsOutput string) error {
-	os.Remove(squashfsOutput)
+func createSquashFSFromFolder(folderPath, output string) error {
+	os.Remove(output)
 
 	// Create the tar command
 	tarCmd := exec.Command("tar", "--numeric-owner", "--owner=0", "--group=0", "-C", folderPath, "-cf", "-", ".")
 
 	// Create the mksquashfs command
-	mksquashfsCmd := exec.Command("sqfstar", squashfsOutput)
+	mksquashfsCmd := exec.Command("sqfstar", output)
 
 	// Set up the pipe
 	r, w := io.Pipe()
@@ -213,6 +230,20 @@ func createSquashFSFromFolder(folderPath, squashfsOutput string) error {
 		return fmt.Errorf("error waiting for mksquashfs command to finish: %w", err.(*exec.ExitError))
 	}
 	r.Close()
+
+	return nil
+}
+
+func createEroFSFromFolder(folderPath, output string) error {
+	os.Remove(output)
+
+	// Create the mkfs.erofs command
+	mkfsCmd := exec.Command("mkfs.erofs", "--all-root", output, folderPath)
+
+	// Start the mksquashfs command first
+	if err := mkfsCmd.Run(); err != nil {
+		return fmt.Errorf("error starting mkfs.erofs command: %w", err)
+	}
 
 	return nil
 }
