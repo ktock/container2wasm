@@ -23,6 +23,12 @@ ARG JS_OUTPUT_NAME=out # for emscripten; must not include "."
 ARG OPTIMIZATION_MODE=wizer # "wizer" or "native"
 # ARG OPTIMIZATION_MODE=native
 
+ARG TINYEMU_REPO=https://github.com/ktock/tinyemu-c2w
+ARG TINYEMU_REPO_VERSION=e4e9bd198f9c0505ab4c77a6a9d038059cd1474a
+
+ARG BOCHS_REPO=https://github.com/ktock/Bochs
+ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
+
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.6.4
 
@@ -36,6 +42,26 @@ RUN apt-get update && apt-get install -y git
 RUN git clone -b ${SOURCE_REPO_VERSION} ${SOURCE_REPO} /assets
 FROM scratch AS assets
 COPY --link --from=assets-base /assets /
+
+FROM ubuntu:22.04 AS tinyemu-repo-base
+ARG TINYEMU_REPO
+ARG TINYEMU_REPO_VERSION
+RUN apt-get update && apt-get install -y git
+RUN git clone ${TINYEMU_REPO} /tinyemu && \
+    cd /tinyemu && \
+    git checkout ${TINYEMU_REPO_VERSION}
+FROM scratch AS tinyemu-repo
+COPY --link --from=tinyemu-repo-base /tinyemu /
+
+FROM ubuntu:22.04 AS bochs-repo-base
+ARG BOCHS_REPO
+ARG BOCHS_REPO_VERSION
+RUN apt-get update && apt-get install -y git
+RUN git clone ${BOCHS_REPO} /Bochs && \
+    cd /Bochs && \
+    git checkout ${BOCHS_REPO_VERSION}
+FROM scratch AS bochs-repo
+COPY --link --from=bochs-repo-base /Bochs /
 
 FROM golang:1.22-bullseye AS golang-base
 FROM golang:1.21-bullseye AS golang-1.21-base
@@ -103,7 +129,7 @@ RUN git clone -b v6.1 --depth 1 https://github.com/torvalds/linux
 
 FROM linux-riscv64-dev-common AS linux-riscv64-dev
 WORKDIR /work-buildlinux/linux
-COPY --link --from=assets /patches/tinyemu/linux_rv64_config ./.config
+COPY --link --from=assets /config/tinyemu/linux_rv64_config ./.config
 RUN make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc) all && \
     mkdir /out && \
     mv /work-buildlinux/linux/arch/riscv/boot/Image /out/Image && \
@@ -111,7 +137,7 @@ RUN make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc) all && \
 
 FROM linux-riscv64-dev-common AS linux-riscv64-config-dev
 WORKDIR /work-buildlinux/linux
-COPY --link --from=assets /patches/tinyemu/linux_rv64_config ./.config
+COPY --link --from=assets /config/tinyemu/linux_rv64_config ./.config
 RUN make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- olddefconfig
 
 FROM scratch AS linux-riscv64-config
@@ -203,7 +229,7 @@ FROM ubuntu:22.04 AS tinyemu-config-dev
 ARG LINUX_LOGLEVEL
 ARG VM_MEMORY_SIZE_MB
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
-COPY --link --from=assets /patches/tinyemu/tinyemu.config.template /
+COPY --link --from=assets /config/tinyemu/tinyemu.config.template /
 RUN cat /tinyemu.config.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB envsubst > /out/tinyemu.config
 
 FROM scratch AS vm-riscv64-dev
@@ -243,7 +269,7 @@ RUN git clone https://github.com/bytecodealliance/wizer && \
     mv include target/debug/wizer /tools/wizer/ && \
     cargo clean
 
-COPY --link --from=assets /patches/tinyemu/tinyemu /tinyemu
+COPY --link --from=tinyemu-repo / /tinyemu
 WORKDIR /tinyemu
 RUN make -j $(nproc) -f Makefile \
     CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP= \
@@ -266,8 +292,9 @@ RUN mv packed /out/$OUTPUT_NAME
 
 FROM emscripten/emsdk:$EMSDK_VERSION AS tinyemu-emscripten
 ARG JS_OUTPUT_NAME
+RUN apt-get update && apt-get install -y git
+COPY --link --from=tinyemu-repo / /tinyemu
 COPY --link --from=vm-riscv64-dev /pack /pack
-COPY --link --from=assets /patches/tinyemu/tinyemu /tinyemu
 WORKDIR /tinyemu
 RUN make -j $(nproc) -f Makefile \
     CONFIG_FS_NET= CONFIG_SDL= CONFIG_INT128= CONFIG_X86EMU= CONFIG_SLIRP= OUTPUT_NAME=$JS_OUTPUT_NAME \
@@ -306,7 +333,7 @@ RUN git clone -b v6.1 --depth 1 https://github.com/torvalds/linux
 FROM linux-amd64-dev-common AS linux-amd64-dev
 RUN apt-get install -y libelf-dev
 WORKDIR /work-buildlinux/linux
-COPY --link --from=assets ./patches/bochs/linux_x86_config ./.config
+COPY --link --from=assets ./config/bochs/linux_x86_config ./.config
 RUN make ARCH=x86 CROSS_COMPILE=x86_64-linux-gnu- -j$(nproc) all && \
     mkdir /out && \
     mv /work-buildlinux/linux/arch/x86/boot/bzImage /out/bzImage && \
@@ -314,7 +341,7 @@ RUN make ARCH=x86 CROSS_COMPILE=x86_64-linux-gnu- -j$(nproc) all && \
 
 FROM linux-amd64-dev-common AS linux-amd64-config-dev
 WORKDIR /work-buildlinux/linux
-COPY --link --from=assets ./patches/bochs/linux_x86_config ./.config
+COPY --link --from=assets ./config/bochs/linux_x86_config ./.config
 RUN make ARCH=x86 CROSS_COMPILE=x86_64-linux-gnu- olddefconfig
 
 FROM scratch AS linux-amd64-config
@@ -367,13 +394,13 @@ RUN make -j$(nproc)
 RUN make install
 RUN mkdir -p /iso/boot/grub
 COPY --link --from=linux-amd64-dev /out/bzImage /iso/boot/grub/
-COPY --link --from=assets ./patches/bochs/grub.cfg.template /
+COPY --link --from=assets ./config/bochs/grub.cfg.template /
 RUN cat /grub.cfg.template | LOGLEVEL=$LINUX_LOGLEVEL envsubst > /iso/boot/grub/grub.cfg
 RUN mkdir /out && grub-mkrescue --directory ./grub-core -o /out/boot.iso /iso
 
 FROM ubuntu AS bios-amd64-dev
-RUN apt-get update && apt-get install -y build-essential
-COPY --link --from=assets ./patches/bochs/Bochs /Bochs
+RUN apt-get update && apt-get install -y build-essential git
+COPY --link --from=bochs-repo / /Bochs
 WORKDIR /Bochs/bochs
 RUN CC="x86_64-linux-gnu-gcc" ./configure --enable-x86-64 --with-nogui
 RUN make -j$(nproc) bios/BIOS-bochs-latest bios/VGABIOS-lgpl-latest
@@ -407,7 +434,7 @@ RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
 FROM ubuntu:22.04 AS bochs-config-dev
 ARG VM_MEMORY_SIZE_MB
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
-COPY --link --from=assets ./patches/bochs/bochsrc.template /
+COPY --link --from=assets ./config/bochs/bochsrc.template /
 RUN cat /bochsrc.template | MEMORY_SIZE=$VM_MEMORY_SIZE_MB envsubst > /out/bochsrc
 
 FROM scratch AS vm-amd64-dev
@@ -452,17 +479,18 @@ RUN wget -O /tmp/binaryen.tar.gz https://github.com/WebAssembly/binaryen/release
 RUN mkdir -p /binaryen
 RUN tar -C /binaryen -zxvf /tmp/binaryen.tar.gz
 
-COPY --link --from=assets ./patches/bochs/jmp /jmp
-WORKDIR /jmp
+COPY --link --from=bochs-repo / /Bochs
+
+WORKDIR /Bochs/bochs/wasi_extra/jmp
+RUN mkdir /jmp && cp jmp.h /jmp/
 RUN ${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -O2 --target=wasm32-unknown-wasi -c jmp.c -I . -o jmp.o
 RUN ${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -O2 --target=wasm32-unknown-wasi -Wl,--export=wasm_setjmp -c jmp.S -o jmp_wrapper.o
-RUN ${WASI_SDK_PATH}/bin/wasm-ld jmp.o jmp_wrapper.o --export=wasm_setjmp --export=wasm_longjmp --export=handle_jmp --no-entry -r -o jmp
+RUN ${WASI_SDK_PATH}/bin/wasm-ld jmp.o jmp_wrapper.o --export=wasm_setjmp --export=wasm_longjmp --export=handle_jmp --no-entry -r -o /jmp/jmp
 
-COPY --link --from=assets ./patches/bochs/vfs /vfs
-WORKDIR /vfs
-RUN ${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -O2 --target=wasm32-unknown-wasi -c vfs.c -I . -o vfs.o
+WORKDIR /Bochs/bochs/wasi_extra/vfs
+RUN mkdir /vfs
+RUN ${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot -O2 --target=wasm32-unknown-wasi -c vfs.c -I . -o /vfs/vfs.o
 
-COPY --link --from=assets /patches/bochs/Bochs /Bochs
 WORKDIR /Bochs/bochs
 ARG INIT_DEBUG
 RUN LOGGING_FLAG=--disable-logging && \
@@ -495,8 +523,8 @@ FROM scratch AS wasi-amd64
 COPY --link --from=bochs-dev-packed /out/ /
 
 FROM emscripten/emsdk:$EMSDK_VERSION AS bochs-emscripten
-RUN apt-get install -y wget
-COPY --link --from=assets ./patches/bochs/Bochs /Bochs
+RUN apt-get install -y wget git
+COPY --link --from=bochs-repo / /Bochs
 WORKDIR /Bochs/bochs
 COPY --link --from=vm-amd64-dev /pack /pack
 ARG INIT_DEBUG

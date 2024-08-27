@@ -70,6 +70,10 @@ func main() {
 			Name:  "external-bundle",
 			Usage: "Do not embed container image to the Wasm image but mount it during runtime",
 		},
+		cli.StringSliceFlag{
+			Name:  "extra-flag",
+			Usage: "extra flag for builders",
+		},
 	}, flags...)
 	app.Action = rootAction
 	if err := app.Run(os.Args); err != nil {
@@ -206,6 +210,7 @@ func build(builderPath string, srcImgPath string, destDir, destFile string, clic
 	for _, a := range clicontext.StringSlice("build-arg") {
 		buildxArgs = append(buildxArgs, "--build-arg", a)
 	}
+	buildxArgs = append(buildxArgs, clicontext.StringSlice("extra-flag")...)
 	buildxArgs = append(buildxArgs, srcImgPath)
 	log.Printf("buildx args: %+v\n", buildxArgs)
 
@@ -260,6 +265,7 @@ func buildWithLegacyBuilder(builderPath string, srcImgPath, destDir, destFile st
 	for _, a := range clicontext.StringSlice("build-arg") {
 		buildArgs = append(buildArgs, "--build-arg", a)
 	}
+	buildArgs = append(buildArgs, clicontext.StringSlice("extra-flag")...)
 	buildArgs = append(buildArgs, srcImgPath)
 	log.Printf("build args: %+v\n", buildArgs)
 
