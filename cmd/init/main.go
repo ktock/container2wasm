@@ -29,9 +29,23 @@ const (
 )
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("panic:", r)
+		}
+		if err := exec.Command("poweroff", "-f").Run(); err != nil {
+			panic("failed running poweroff")
+		}
+	}()
+
 	if err := doInit(); err != nil {
 		panic(err)
 	}
+}
+
+func fsExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
 }
 
 func doInit() error {
@@ -144,6 +158,7 @@ func doInit() error {
 
 	if info.withNet {
 		if info.mac != "" {
+			log.Printf("Setting up MAC:\n%s\n", info.mac)
 			if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "down").CombinedOutput(); err != nil {
 				return fmt.Errorf("failed eth0 down: %v: %w", string(o), err)
 			}
@@ -151,9 +166,12 @@ func doInit() error {
 				return fmt.Errorf("failed change mac address of eth0: %v: %w", string(o), err)
 			}
 		}
+		log.Println("Ethernet UP...")
 		if o, err := exec.Command("ip", "link", "set", "dev", "eth0", "up").CombinedOutput(); err != nil {
 			return fmt.Errorf("failed eth0 up: %v: %w", string(o), err)
 		}
+
+		log.Println("DHCP...")
 		if o, err := exec.Command("udhcpc", "-i", "eth0").CombinedOutput(); err != nil {
 			return fmt.Errorf("failed udhcpc: %w", err)
 		} else if cfg.Debug {
@@ -163,28 +181,47 @@ func doInit() error {
 	}
 
 	if externalBundle {
-		if info.bundle == "" {
-			return fmt.Errorf("neither of embedded image nor external bundle is provided")
-		}
-		if !info.withNet {
-			return fmt.Errorf("networking must be enabled")
+		bundlePath := "/mnt/wasi0/ext/bundle"
+		bindRootFS := false
+
+		if strings.HasPrefix(info.bundle, "9p=") {
+			if !info.withNet {
+				return fmt.Errorf("networking must be enabled for 9p")
+			}
+
+			// mount 9p bundle
+			addr, ok := strings.CutPrefix(info.bundle, "9p=")
+			if !ok {
+				return fmt.Errorf("unsupported external bundle %q", info.bundle)
+			}
+
+			if err := os.MkdirAll(bundlePath, os.FileMode(0755)); err != nil {
+				return fmt.Errorf("failed to create %q: %w", bundlePath, err)
+			}
+			if err := syscall.Mount(addr, bundlePath, "9p", 0, "trans=tcp,version=9p2000.L,msize=5000000,port=80,cache=loose,ro"); err != nil {
+				return fmt.Errorf("failed mounting oci %v", err)
+			}
+
+			bindRootFS = true
+
+		} else {
+			if info.bundle != "" {
+				if info.bundle[0] != '/' {
+					return fmt.Errorf("invalid external bundle path")
+				}
+				bundlePath = filepath.Join("/mnt/wasi0", info.bundle)
+			}
+			if !fsExists(bundlePath) {
+				return fmt.Errorf("can't find external bundle in %s", bundlePath)
+			}
+
 		}
 
-		// mount bundle
-		addr, ok := strings.CutPrefix(info.bundle, "9p=")
-		if !ok {
-			return fmt.Errorf("unsupported external bundle %q", info.bundle)
-		}
+		bundleSpecPath := filepath.Join(bundlePath, "config", "config.json")
+		bundleImageConfigPath := filepath.Join(bundlePath, "config", "imageconfig.json")
 
-		bundle9pPath := "/run/9pbundle"
-		bundle9pSpecPath := filepath.Join(bundle9pPath, "config", "config.json")
-		bundle9pImageConfigPath := filepath.Join(bundle9pPath, "config", "imageconfig.json")
-
-		if err := os.MkdirAll(bundle9pPath, os.FileMode(0755)); err != nil {
-			return fmt.Errorf("failed to create %q: %w", bundle9pPath, err)
-		}
-		if err := syscall.Mount(addr, bundle9pPath, "9p", 0, "trans=tcp,version=9p2000.L,msize=5000000,port=80,cache=loose,ro"); err != nil {
-			return fmt.Errorf("failed mounting oci %v", err)
+		if !fsExists(bundleSpecPath) || !fsExists(bundleImageConfigPath) {
+			return fmt.Errorf("invalid external bundle format")
 		}
 
 		// make bundle usable
@@ -195,12 +232,26 @@ func doInit() error {
 		if err := os.MkdirAll(cfg.Container.ImageRootfsPath, os.FileMode(0755)); err != nil {
 			return fmt.Errorf("failed to create %q: %w", cfg.Container.ImageRootfsPath, err)
 		}
-		if err := syscall.Mount(filepath.Join(bundle9pPath, "rootfs"), cfg.Container.ImageRootfsPath, "", syscall.MS_BIND, ""); err != nil {
-			return fmt.Errorf("cannot bind mount 9p rootfs to %q: %w", cfg.Container.ImageRootfsPath, err)
+
+		if bindRootFS {
+			if err := syscall.Mount(filepath.Join(bundlePath, "rootfs"), cfg.Container.ImageRootfsPath, "", syscall.MS_BIND, ""); err != nil {
+				return fmt.Errorf("cannot bind mount 9p rootfs to %q: %w", cfg.Container.ImageRootfsPath, err)
+			}
+		} else {
+			var err error
+			for _, fsType := range []string{"erofs", "squashfs", "iso9660"} {
+				cmd := exec.Command("/bin/mount", "-t", fsType, "-o", "loop", filepath.Join(bundlePath, "rootfs.bin"), cfg.Container.ImageRootfsPath)
+				if _, err = cmd.Output(); err == nil {
+					break
+				}
+			}
+			if err != nil {
+				return fmt.Errorf("failed mounting oci with %s", string(err.(*exec.ExitError).Stderr))
+			}
 		}
 
 		// parse config
-		f, err := os.Open(bundle9pSpecPath)
+		f, err := os.Open(bundleSpecPath)
 		if err != nil {
 			return fmt.Errorf("failed to open spec file: %v", err)
 		}
@@ -208,7 +259,7 @@ func doInit() error {
 			return err
 		}
 		f.Close()
-		f, err = os.Open(bundle9pImageConfigPath)
+		f, err = os.Open(bundleImageConfigPath)
 		if err != nil {
 			return fmt.Errorf("failed to open image config file: %v", err)
 		}
@@ -253,9 +304,6 @@ func doInit() error {
 		}
 	}
 
-	if err := exec.Command("poweroff", "-f").Run(); err != nil {
-		return fmt.Errorf("failed running poweroff")
-	}
 	return lastErr
 }
 
@@ -372,6 +420,10 @@ func parseInfo(infoD []byte) (info runtimeFlags) {
 		options = append(options, strings.ReplaceAll(string(infoD[prev:s]), "\\\n", "\n"))
 		prev = m[1]
 	}
+
+	info.bundle = "/ext/bundle"
+	mounts := make(map[string]runtimespec.Mount)
+
 	options = append(options, strings.ReplaceAll(string(infoD[prev:]), "\\\n", "\n"))
 	for _, l := range options {
 		elms := strings.SplitN(l, ":", 2)
@@ -386,12 +438,12 @@ func parseInfo(infoD []byte) (info runtimeFlags) {
 				// no path is specified; nop
 				continue
 			}
-			info.mounts = append(info.mounts, runtimespec.Mount{
+			mounts[o] = runtimespec.Mount{
 				Type:        "bind",
 				Source:      filepath.Join("/mnt/wasi0", o),
 				Destination: filepath.Join("/", o), // TODO: ensure not outside of "/"
 				Options:     []string{"bind"},
-			})
+			}
 			log.Printf("Prepared mount wasi0 => %q", o)
 		case "c":
 			info.args = nil
@@ -423,6 +475,13 @@ func parseInfo(infoD []byte) (info runtimeFlags) {
 			log.Printf("unsupported prefix: %q", inst)
 		}
 	}
+
+	for o, m := range mounts {
+		if o != info.bundle {
+			info.mounts = append(info.mounts, m)
+		}
+	}
+
 	return
 }
 
