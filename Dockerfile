@@ -5,10 +5,10 @@ ARG WASI_SDK_VERSION=19
 ARG WASI_SDK_VERSION_FULL=${WASI_SDK_VERSION}.0
 ARG WASI_VFS_VERSION=v0.3.0
 ARG WIZER_VERSION=04e49c989542f2bf3a112d60fbf88a62cce2d0d0
-ARG EMSDK_VERSION=3.1.40 # TODO: support recent version
+ARG EMSDK_VERSION=3.1.50 # TODO: support recent version
 ARG BINARYEN_VERSION=114
 ARG BUSYBOX_VERSION=1_36_1
-ARG RUNC_VERSION=v1.1.12
+ARG RUNC_VERSION=v1.2.0-rc.2
 
 # ARG LINUX_LOGLEVEL=0
 # ARG INIT_DEBUG=false
@@ -29,8 +29,17 @@ ARG TINYEMU_REPO_VERSION=e4e9bd198f9c0505ab4c77a6a9d038059cd1474a
 ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
+ARG QEMU_REPO=https://github.com/ktock/qemu
+ARG QEMU_REPO_VERSION=0be467c1413fc2871a0de1f200b8ee930e5f0dc6
+
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.6.5
+
+ARG ZLIB_VERSION=1.3.1
+ARG GLIB_MINOR_VERSION=2.75
+ARG GLIB_VERSION=${GLIB_MINOR_VERSION}.0
+ARG PIXMAN_VERSION=0.42.2
+ARG FFI_VERSION=adbcf2b247696dde2667ab552cb93e0c79455c84
 
 FROM scratch AS oci-image-src
 COPY . .
@@ -62,6 +71,16 @@ RUN git clone ${BOCHS_REPO} /Bochs && \
     git checkout ${BOCHS_REPO_VERSION}
 FROM scratch AS bochs-repo
 COPY --link --from=bochs-repo-base /Bochs /
+
+FROM ubuntu:22.04 AS qemu-repo-base
+ARG QEMU_REPO
+ARG QEMU_REPO_VERSION
+RUN apt-get update && apt-get install -y git
+RUN git clone ${QEMU_REPO} /qemu && \
+    cd /qemu && \
+    git checkout ${QEMU_REPO_VERSION}
+FROM scratch AS qemu-repo
+COPY --link --from=qemu-repo-base /qemu /
 
 FROM golang:1.22-bullseye AS golang-base
 FROM golang:1.21-bullseye AS golang-1.21-base
@@ -321,6 +340,134 @@ FROM wasi-tinyemu AS wasi-mips64
 FROM wasi-tinyemu AS wasi-ppc64le
 FROM wasi-tinyemu AS wasi-s390
 
+FROM emscripten/emsdk:$EMSDK_VERSION AS glib-emscripten-base
+# Porting glib to emscripten inspired by https://github.com/emscripten-core/emscripten/issues/11066
+ENV TARGET=/glib-emscripten/target
+ENV CFLAGS="-O2 -matomics -mbulk-memory -DNDEBUG -sWASM_BIGINT -DWASM_BIGINT -pthread -sMALLOC=mimalloc  -sASYNCIFY=1 "
+ENV CXXFLAGS="$CFLAGS"
+ENV LDFLAGS="-L$TARGET/lib -O2"
+ENV CPATH="$TARGET/include"
+ENV PKG_CONFIG_PATH="$TARGET/lib/pkgconfig"
+ENV EM_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
+ENV CHOST="wasm32-unknown-linux"
+ENV MAKEFLAGS="-j$(nproc)"
+RUN apt-get update && apt-get install -y \
+    autoconf \
+    build-essential \
+    libglib2.0-dev \
+    libtool \
+    pkgconf \
+    ninja-build \
+    python3-pip
+RUN pip3 install meson
+RUN mkdir /glib-emscripten
+WORKDIR /glib-emscripten
+RUN mkdir -p $TARGET
+
+FROM glib-emscripten-base AS zlib-emscripten-dev
+ARG ZLIB_VERSION
+RUN mkdir -p /zlib
+RUN curl -Ls https://zlib.net/zlib-$ZLIB_VERSION.tar.xz | tar xJC /zlib --strip-components=1
+WORKDIR /zlib
+RUN emconfigure ./configure --prefix=$TARGET --static
+RUN make install
+
+FROM glib-emscripten-base AS libffi-emscripten-dev
+ARG FFI_VERSION
+RUN mkdir -p /libffi
+RUN git clone https://github.com/libffi/libffi /libffi
+WORKDIR /libffi
+RUN git checkout $FFI_VERSION
+RUN autoreconf -fiv
+RUN LDFLAGS="$LDFLAGS -sEXPORTED_RUNTIME_METHODS='getTempRet0,setTempRet0'" ; \
+    emconfigure ./configure --host=$CHOST --prefix=$TARGET --enable-static --disable-shared --disable-dependency-tracking \
+    --disable-builddir --disable-multi-os-directory --disable-raw-api --disable-structs --disable-docs
+RUN emmake make install SUBDIRS='include'
+
+FROM glib-emscripten-base AS glib-emscripten-dev
+ARG GLIB_VERSION
+ARG GLIB_MINOR_VERSION
+RUN mkdir -p /stub
+WORKDIR /stub
+RUN <<EOF
+cat <<'EOT' > res_query.c
+#include <netdb.h>
+int res_query(const char *name, int class, int type, unsigned char *dest, int len)
+{
+    h_errno = HOST_NOT_FOUND;
+    return -1;
+}
+EOT
+EOF
+RUN emcc ${CFLAGS} -c res_query.c -fPIC -o libresolv.o
+RUN ar rcs libresolv.a libresolv.o
+RUN mkdir -p $TARGET/lib/
+RUN cp libresolv.a $TARGET/lib/
+
+RUN mkdir -p /glib
+RUN curl -Lks https://download.gnome.org/sources/glib/${GLIB_MINOR_VERSION}/glib-$GLIB_VERSION.tar.xz | tar xJC /glib --strip-components=1
+
+COPY --link --from=zlib-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --link --from=libffi-emscripten-dev /glib-emscripten/ /glib-emscripten/
+
+WORKDIR /glib
+ENV CFLAGS="-Wno-error=incompatible-function-pointer-types -Wincompatible-function-pointer-types -O2 -matomics -mbulk-memory -DNDEBUG -pthread -sWASM_BIGINT -sMALLOC=mimalloc -sASYNCIFY=1"
+ENV CXXFLAGS="$CFLAGS"
+RUN <<EOF
+cat <<'EOT' > /emcc-meson-wrap.sh
+#!/bin/bash
+set -euo pipefail
+old_string="-Werror=unused-command-line-argument"
+# emscripten ignores some -s flags during compilation with warnings. Meson checking phase fails when it sees these warnings.
+new_string="-Wno-error=unused-command-line-argument"
+cmd="$1"
+shift
+new_args=()
+for arg in "$@"; do
+  new_arg="${arg//$old_string/$new_string}"
+  new_args+=("$new_arg")
+done
+"$cmd" "${new_args[@]}"
+EOT
+EOF
+RUN <<EOF
+cat <<'EOT' > /cross.meson
+[host_machine]
+system = 'emscripten'
+cpu_family = 'wasm32'
+cpu = 'wasm32'
+endian = 'little'
+
+[binaries]
+c = ['bash', '/emcc-meson-wrap.sh', 'emcc']
+cpp = ['bash', '/emcc-meson-wrap.sh', 'em++']
+ar = 'emar'
+ranlib = 'emranlib'
+pkgconfig = ['pkg-config', '--static']
+EOT
+EOF
+RUN meson setup _build --prefix=$TARGET --cross-file=/cross.meson --default-library=static --buildtype=release \
+    --force-fallback-for=pcre2,gvdb -Dselinux=disabled -Dxattr=false -Dlibmount=disabled -Dnls=disabled \
+    -Dtests=false -Dglib_assert=false -Dglib_checks=false
+RUN sed -i -E "/#define HAVE_CLOSE_RANGE 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_EPOLL_CREATE 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_KQUEUE 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_POSIX_SPAWN 1/d" ./_build/config.h
+RUN sed -i -E "/#define HAVE_FALLOCATE 1/d" ./_build/config.h
+RUN meson install -C _build
+
+FROM glib-emscripten-base AS pixman-emscripten-dev
+ARG PIXMAN_VERSION
+RUN mkdir /pixman/
+RUN git clone  https://gitlab.freedesktop.org/pixman/pixman /pixman/
+WORKDIR /pixman
+RUN git checkout pixman-$PIXMAN_VERSION
+RUN NOCONFIGURE=y ./autogen.sh
+RUN emconfigure ./configure --prefix=/glib-emscripten/target/
+RUN emmake make -j$(nproc)
+RUN emmake make install
+RUN rm /glib-emscripten/target/lib/libpixman-1.so /glib-emscripten/target/lib/libpixman-1.so.0 /glib-emscripten/target/lib/libpixman-1.so.$PIXMAN_VERSION
+
 FROM ubuntu:22.04 AS gcc-x86-64-linux-gnu-base
 RUN apt-get update && apt-get install -y gcc-x86-64-linux-gnu linux-libc-dev-amd64-cross git make
 
@@ -443,6 +590,44 @@ COPY --link --from=bios-amd64-dev /out/ /pack/
 COPY --link --from=rootfs-amd64-dev /out/rootfs.bin /pack/
 COPY --link --from=bochs-config-dev /out/bochsrc /pack/
 
+FROM linux-amd64-dev-common AS linux-amd64-dev-qemu
+RUN apt-get install -y libelf-dev
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets ./config/qemu/linux_x86_config ./.config
+RUN make ARCH=x86 CROSS_COMPILE=x86_64-linux-gnu- -j$(nproc) all && \
+    mkdir /out && \
+    mv /work-buildlinux/linux/arch/x86/boot/bzImage /out/bzImage && \
+    make clean
+
+FROM glib-emscripten-base AS qemu-emscripten-dev
+COPY --link --from=qemu-repo / /qemu
+WORKDIR /qemu
+COPY --link --from=zlib-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --link --from=glib-emscripten-dev /glib-emscripten/ /glib-emscripten/
+COPY --link --from=pixman-emscripten-dev /glib-emscripten/ /glib-emscripten/
+RUN mkdir -p build
+WORKDIR /qemu/build
+RUN npm i xterm-pty
+RUN EXTRA_CFLAGS="-O2 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((2048*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 " ; \
+    emconfigure ../configure --static --target-list=x86_64-softmmu --cpu=wasm32 --cross-prefix= \
+    --without-default-features --enable-system --with-coroutine=fiber \
+    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY" && \
+    emmake make -j $(nproc) qemu-system-x86_64
+COPY --link --from=rootfs-amd64-dev /out/rootfs.bin /pack/
+COPY --link --from=linux-amd64-dev-qemu /out/bzImage /pack/
+RUN cp /qemu/pc-bios/bios-256k.bin /pack/
+RUN cp /qemu/pc-bios/kvmvapic.bin /pack/
+RUN cp /qemu/pc-bios/linuxboot_dma.bin /pack/
+RUN cp /qemu/pc-bios/vgabios-stdvga.bin /pack/
+RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-x86_64.data --preload /pack > load.js
+
+FROM scratch AS js-qemu-amd64
+COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64 /out.js
+COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64.wasm /
+COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64.worker.js /
+COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64.data /
+COPY --link --from=qemu-emscripten-dev /qemu/build/load.js /
+
 FROM rust:1.74.1-buster AS bochs-dev-common
 ARG WASI_VFS_VERSION
 ARG WASI_SDK_VERSION
@@ -530,7 +715,7 @@ COPY --link --from=vm-amd64-dev /pack /pack
 ARG INIT_DEBUG
 RUN LOGGING_FLAG=--disable-logging && \
     if test "${INIT_DEBUG}" = "true" ; then LOGGING_FLAG=--enable-logging ; fi && \
-    CFLAGS="-O2 -s WASM=1 -s ASYNCIFY=1 -s ALLOW_MEMORY_GROWTH=1  -s TOTAL_MEMORY=$((20*1024*1024)) -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -D__GNU__" \
+    CFLAGS="-O2 -s WASM=1 -s ASYNCIFY=1 -s ALLOW_MEMORY_GROWTH=1  -s TOTAL_MEMORY=$((30*1024*1024)) -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -D__GNU__" \
     CXXFLAGS="${CFLAGS}" \
     emconfigure ./configure --host wasm32-unknown-emscripten --enable-x86-64 --with-nogui --enable-usb --enable-usb-ehci \
     --disable-large-ramfile --disable-show-ips --disable-stats ${LOGGING_FLAG} \

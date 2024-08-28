@@ -75,16 +75,18 @@ func doInit() error {
 		return err
 	}
 
-	// WASI-related filesystems
-	for _, tag := range []string{rootFSTag, packFSTag} {
-		dst := filepath.Join("/mnt", tag)
-		if err := os.Mkdir(dst, 0777); err != nil {
-			return err
-		}
-		log.Printf("mounting %q to %q\n", tag, dst)
-		if err := syscall.Mount(tag, dst, "9p", 0, "trans=virtio,version=9p2000.L,msize=8192"); err != nil {
-			log.Printf("failed mounting %q: %v\n", tag, err)
-			break
+	if os.Getenv("NO_RUNTIME_CONFIG") != "1" {
+		// WASI-related filesystems
+		for _, tag := range []string{rootFSTag, packFSTag} {
+			dst := filepath.Join("/mnt", tag)
+			if err := os.Mkdir(dst, 0777); err != nil {
+				return err
+			}
+			log.Printf("mounting %q to %q\n", tag, dst)
+			if err := syscall.Mount(tag, dst, "9p", 0, "trans=virtio,version=9p2000.L,msize=8192"); err != nil {
+				log.Printf("failed mounting %q: %v\n", tag, err)
+				break
+			}
 		}
 	}
 	var s runtimespec.Spec
@@ -113,34 +115,38 @@ func doInit() error {
 		log.SetOutput(io.Discard)
 	}
 
-	// Wizer snapshot can be created by the host here
-	//////////////////////////////////////////////////////////////////////
-	fmt.Printf("==========") // special string not printed
-	var b [2]byte
-	var bPos int
-	bTargetPos := 1
-	for {
-		if _, err := os.Stdin.Read(b[:]); err != nil {
+	var info runtimeFlags
+	if os.Getenv("NO_RUNTIME_CONFIG") != "1" {
+		// Wizer snapshot can be created by the host here
+		//////////////////////////////////////////////////////////////////////
+		fmt.Printf("==========") // special string not printed
+		var b [2]byte
+		var bPos int
+		bTargetPos := 1
+		for {
+			if _, err := os.Stdin.Read(b[:]); err != nil {
+				return err
+			}
+			log.Printf("HOST: got %q\n", string(b[:]))
+			if b[0] == '=' && b[1] == '\n' {
+				bPos++
+				if bPos == bTargetPos {
+					break
+				}
+				continue
+			}
+			bPos = 0
+		}
+		///////////////////////////////////////////////////////////////////////
+
+		infoD, err := os.ReadFile(filepath.Join("/mnt", packFSTag, "info"))
+		if err != nil {
 			return err
 		}
-		log.Printf("HOST: got %q\n", string(b[:]))
-		if b[0] == '=' && b[1] == '\n' {
-			bPos++
-			if bPos == bTargetPos {
-				break
-			}
-			continue
-		}
-		bPos = 0
+		log.Printf("INFO:\n%s\n", string(infoD))
+		info = parseInfo(infoD)
+		//log.Printf("Running: %+v\n", s.Process.Args)
 	}
-	///////////////////////////////////////////////////////////////////////
-
-	infoD, err := os.ReadFile(filepath.Join("/mnt", packFSTag, "info"))
-	if err != nil {
-		return err
-	}
-	log.Printf("INFO:\n%s\n", string(infoD))
-	info := parseInfo(infoD)
 
 	if info.withNet {
 		if info.mac != "" {
