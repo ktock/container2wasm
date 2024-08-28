@@ -17,7 +17,7 @@ import (
 	"github.com/containerd/containerd/images"
 	ctdnamespaces "github.com/containerd/containerd/namespaces"
 	ctdoci "github.com/containerd/containerd/oci"
-	"github.com/containerd/containerd/platforms"
+	"github.com/containerd/platforms"
 	inittype "github.com/ktock/container2wasm/cmd/init/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	spec "github.com/opencontainers/image-spec/specs-go/v1"

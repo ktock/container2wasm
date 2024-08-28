@@ -36,7 +36,7 @@ import (
 	ctdcontainers "github.com/containerd/containerd/containers"
 	ctdnamespaces "github.com/containerd/containerd/namespaces"
 	ctdoci "github.com/containerd/containerd/oci"
-	"github.com/containerd/containerd/platforms"
+	"github.com/containerd/platforms"
 	"github.com/containerd/containerd/reference"
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
