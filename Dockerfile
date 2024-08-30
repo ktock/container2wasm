@@ -30,7 +30,7 @@ ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
-ARG SOURCE_REPO_VERSION=v0.6.4
+ARG SOURCE_REPO_VERSION=v0.6.5
 
 FROM scratch AS oci-image-src
 COPY . .
