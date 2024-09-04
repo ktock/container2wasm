@@ -74,6 +74,10 @@ func main() {
 			Name:  "extra-flag",
 			Usage: "extra flag for builders",
 		},
+		cli.StringFlag{
+			Name:  "target-stage",
+			Usage: "target stage of the build",
+		},
 	}, flags...)
 	app.Action = rootAction
 	if err := app.Run(os.Args); err != nil {
@@ -121,6 +125,9 @@ func rootAction(clicontext *cli.Context) error {
 	if clicontext.Bool("to-js") {
 		destFile = ""
 	}
+	if clicontext.String("target-stage") != "" {
+		destFile = ""
+	}
 	if outputPath != "" {
 		d, f := filepath.Split(outputPath)
 		destDir, err = filepath.Abs(d)
@@ -133,6 +140,9 @@ func rootAction(clicontext *cli.Context) error {
 	}
 	if clicontext.Bool("to-js") && destFile != "" {
 		return fmt.Errorf("output destination must be a slash-terminated directory path when using \"to-js\" option")
+	}
+	if clicontext.String("target-stage") != "" && destFile != "" {
+		return fmt.Errorf("output destination must be a slash-terminated directory path when using \"target-stage\" option")
 	}
 	if a := clicontext.String("assets"); a != "" && legacy {
 		return fmt.Errorf("\"assets\" unsupported on docker build as of now; install docker buildx instead")
@@ -191,6 +201,11 @@ func build(builderPath string, srcImgPath string, destDir, destFile string, clic
 			"--target=js",
 			"--build-arg", "OPTIMIZATION_MODE=native",
 		)
+	} else if ts := clicontext.String("target-stage"); ts != "" {
+		buildxArgs = append(buildxArgs,
+			"--target="+ts,
+			"--build-arg", "OPTIMIZATION_MODE=native",
+		)
 	}
 	buildxArgs = append(buildxArgs, "--output", fmt.Sprintf("type=local,dest=%s", destDir))
 	if destFile != "" {
@@ -244,6 +259,11 @@ func buildWithLegacyBuilder(builderPath string, srcImgPath, destDir, destFile st
 	if clicontext.Bool("to-js") {
 		buildArgs = append(buildArgs,
 			"--target=js",
+			"--build-arg", "OPTIMIZATION_MODE=native",
+		)
+	} else if ts := clicontext.String("target-stage"); ts != "" {
+		buildArgs = append(buildArgs,
+			"--target="+ts,
 			"--build-arg", "OPTIMIZATION_MODE=native",
 		)
 	}
