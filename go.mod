@@ -3,7 +3,7 @@ module github.com/ktock/container2wasm
 go 1.21
 
 require (
-	github.com/containerd/containerd v1.7.21
+	github.com/containerd/containerd v1.7.22
 	github.com/containerd/platforms v0.2.1
 	github.com/containers/gvisor-tap-vsock v0.7.5
 	github.com/opencontainers/image-spec v1.1.0
