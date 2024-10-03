@@ -17,6 +17,7 @@ ARG INIT_DEBUG=true
 ARG VM_MEMORY_SIZE_MB=128
 ARG NO_VMTOUCH=
 ARG EXTERNAL_BUNDLE=
+ARG NO_BINFMT=
 
 ARG OUTPUT_NAME=out.wasm # for wasi
 ARG JS_OUTPUT_NAME=out # for emscripten; must not include "."
@@ -30,7 +31,7 @@ ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
 ARG QEMU_REPO=https://github.com/ktock/qemu
-ARG QEMU_REPO_VERSION=0be467c1413fc2871a0de1f200b8ee930e5f0dc6
+ARG QEMU_REPO_VERSION=63f28911e6e2ba9cfef73897a8e676d6a1eb19bb
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.6.5
@@ -91,6 +92,7 @@ ARG TARGETPLATFORM
 ARG INIT_DEBUG
 ARG OPTIMIZATION_MODE
 ARG NO_VMTOUCH
+ARG NO_BINFMT
 ARG EXTERNAL_BUNDLE
 COPY --link --from=assets / /work
 WORKDIR /work
@@ -109,9 +111,11 @@ RUN mkdir -p /out/oci/rootfs /out/oci/bundle && \
     NO_VMTOUCH_F=false && \
     if test "${OPTIMIZATION_MODE}" = "native" ; then NO_VMTOUCH_F=true ; fi && \
     if test "${NO_VMTOUCH}" != "" ; then NO_VMTOUCH_F="${NO_VMTOUCH}" ; fi && \
+    NO_BINFMT_F=false && \
+    if test "${NO_BINFMT}" != "" ; then NO_BINFMT_F="${NO_BINFMT}" ; fi && \
     EXTERNAL_BUNDLE_F=false && \
     if test "${EXTERNAL_BUNDLE}" = "true" ; then EXTERNAL_BUNDLE_F=true ; fi && \
-    create-spec --debug=${INIT_DEBUG} --debug-init=${IS_WIZER} --no-vmtouch=${NO_VMTOUCH_F} --external-bundle=${EXTERNAL_BUNDLE_F} \
+    create-spec --debug=${INIT_DEBUG} --debug-init=${IS_WIZER} --no-vmtouch=${NO_VMTOUCH_F} --external-bundle=${EXTERNAL_BUNDLE_F} --no-binfmt=${NO_BINFMT_F} \
                 --image-config-path=/oci/image.json \
                 --runtime-config-path=/oci/spec.json \
                 --rootfs-path=/oci/rootfs \
@@ -590,6 +594,92 @@ COPY --link --from=bios-amd64-dev /out/ /pack/
 COPY --link --from=rootfs-amd64-dev /out/rootfs.bin /pack/
 COPY --link --from=bochs-config-dev /out/bochsrc /pack/
 
+FROM ubuntu:22.04 AS gcc-aarch64-linux-gnu-base
+RUN apt-get update && apt-get install -y gcc-aarch64-linux-gnu linux-libc-dev-arm64-cross git make
+
+FROM gcc-aarch64-linux-gnu-base AS linux-aarch64-dev-common
+RUN apt-get update && apt-get install -y gperf flex bison bc
+RUN mkdir /work-buildlinux
+WORKDIR /work-buildlinux
+RUN git clone -b v6.1 --depth 1 https://github.com/torvalds/linux
+
+FROM linux-aarch64-dev-common AS linux-aarch64-dev-qemu
+RUN apt-get install -y libelf-dev
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets ./config/qemu/linux_arm64_config ./.config
+RUN make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) all && \
+    mkdir /out && \
+    mv /work-buildlinux/linux/arch/arm64/boot/Image /out/bzImage && \
+    make clean
+
+FROM linux-aarch64-dev-common AS linux-aarch64-config-dev
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets ./config/qemu/linux_arm64_config ./.config
+RUN make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+
+FROM scratch AS linux-aarch64-config
+COPY --link --from=linux-aarch64-config-dev /work-buildlinux/linux/.config /
+
+FROM gcc-aarch64-linux-gnu-base AS busybox-aarch64-dev
+ARG BUSYBOX_VERSION
+RUN apt-get update -y && apt-get install -y gcc bzip2
+WORKDIR /work
+RUN git clone -b $BUSYBOX_VERSION --depth 1 https://git.busybox.net/busybox
+WORKDIR /work/busybox
+RUN make CROSS_COMPILE=aarch64-linux-gnu- LDFLAGS=--static defconfig
+RUN make CROSS_COMPILE=aarch64-linux-gnu- LDFLAGS=--static -j$(nproc)
+RUN mkdir -p /out/bin && mv busybox /out/bin/busybox
+RUN make LDFLAGS=--static defconfig
+RUN make LDFLAGS=--static -j$(nproc)
+RUN for i in $(./busybox --list) ; do ln -s busybox /out/bin/$i ; done
+RUN mkdir -p /out/usr/share/udhcpc/ && cp ./examples/udhcp/simple.script /out/usr/share/udhcpc/default.script
+
+FROM golang-base AS runc-aarch64-dev
+ARG RUNC_VERSION
+RUN apt-get update -y && apt-get install -y git make gperf
+RUN apt-get update -y && apt-get install -y gcc-aarch64-linux-gnu libc-dev-arm64-cross
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    git clone https://github.com/opencontainers/runc.git /go/src/github.com/opencontainers/runc && \
+    cd /go/src/github.com/opencontainers/runc && \
+    git checkout "${RUNC_VERSION}" && \
+    make static GOARCH=arm64 CC=aarch64-linux-gnu-gcc EXTRA_LDFLAGS='-s -w' BUILDTAGS="" EXTRA_LDFLAGS='-s -w' BUILDTAGS="" && \
+    mkdir -p /out/ && mv runc /out/runc
+
+FROM gcc-aarch64-linux-gnu-base AS vmtouch-aarch64-dev
+RUN git clone https://github.com/hoytech/vmtouch.git && \
+    cd vmtouch && \
+    CC="aarch64-linux-gnu-gcc -static" make && \
+    mkdir /out && mv vmtouch /out/
+
+FROM gcc-aarch64-linux-gnu-base AS tini-aarch64-dev
+# https://github.com/krallin/tini#building-tini
+RUN apt-get update -y && apt-get install -y cmake
+ENV CFLAGS="-DPR_SET_CHILD_SUBREAPER=36 -DPR_GET_CHILD_SUBREAPER=37"
+WORKDIR /work
+RUN git clone -b v0.19.0 https://github.com/krallin/tini
+WORKDIR /work/tini
+ENV CC="aarch64-linux-gnu-gcc -static"
+RUN cmake . && make && mkdir /out/ && mv tini /out/
+
+FROM golang-base AS init-aarch64-dev
+COPY --link --from=assets / /work
+WORKDIR /work
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOARCH=arm64 go build -ldflags "-s -w -extldflags '-static'" -tags "osusergo netgo static_build" -o /out/init ./cmd/init
+
+FROM ubuntu:22.04 AS rootfs-aarch64-dev
+RUN apt-get update -y && apt-get install -y mkisofs
+COPY --link --from=busybox-aarch64-dev /out/ /rootfs/
+COPY --link --from=runc-aarch64-dev /out/runc /rootfs/sbin/runc
+COPY --link --from=bundle-dev /out/ /rootfs/
+COPY --link --from=init-aarch64-dev /out/init /rootfs/sbin/init
+COPY --link --from=vmtouch-aarch64-dev /out/vmtouch /rootfs/bin/
+COPY --link --from=tini-aarch64-dev /out/tini /rootfs/sbin/tini
+RUN mkdir -p /rootfs/proc /rootfs/sys /rootfs/mnt /rootfs/run /rootfs/tmp /rootfs/dev /rootfs/var /rootfs/etc && mknod /rootfs/dev/null c 1 3 && chmod 666 /rootfs/dev/null
+RUN mkdir /out/ && mkisofs -l -J -R -o /out/rootfs.bin /rootfs/
+
 FROM linux-amd64-dev-common AS linux-amd64-dev-qemu
 RUN apt-get install -y libelf-dev
 WORKDIR /work-buildlinux/linux
@@ -608,7 +698,9 @@ COPY --link --from=pixman-emscripten-dev /glib-emscripten/ /glib-emscripten/
 RUN mkdir -p build
 WORKDIR /qemu/build
 RUN npm i xterm-pty
-RUN EXTRA_CFLAGS="-O2 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((2048*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 " ; \
+
+FROM qemu-emscripten-dev AS qemu-emscripten-dev-amd64
+RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((3000*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js" ; \
     emconfigure ../configure --static --target-list=x86_64-softmmu --cpu=wasm32 --cross-prefix= \
     --without-default-features --enable-system --with-coroutine=fiber \
     --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY" && \
@@ -622,11 +714,31 @@ RUN cp /qemu/pc-bios/vgabios-stdvga.bin /pack/
 RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-x86_64.data --preload /pack > load.js
 
 FROM scratch AS js-qemu-amd64
-COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64 /out.js
-COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64.wasm /
-COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64.worker.js /
-COPY --link --from=qemu-emscripten-dev /qemu/build/qemu-system-x86_64.data /
-COPY --link --from=qemu-emscripten-dev /qemu/build/load.js /
+COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64 /out.js
+COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.wasm /
+COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.worker.js /
+COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.data /
+COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/load.js /
+
+FROM qemu-emscripten-dev AS qemu-emscripten-dev-aarch64
+RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((2048*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 " ; \
+    emconfigure ../configure --static --target-list=aarch64-softmmu --cpu=wasm32 --cross-prefix= \
+    --without-default-features --enable-system --with-coroutine=fiber \
+    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY" && \
+    emmake make -j $(nproc) qemu-system-aarch64
+COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
+COPY --link --from=linux-aarch64-dev-qemu /out/bzImage /pack/
+RUN rm /pack/edk2-aarch64-code.fd || true
+RUN cp /qemu/pc-bios/edk2-aarch64-code.fd.bz2 /pack/
+RUN bzip2 -d /pack/edk2-aarch64-code.fd.bz2
+RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-aarch64.data --preload /pack > load.js
+
+FROM scratch AS js-qemu-aarch64
+COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64 /out.js
+COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.wasm /
+COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.worker.js /
+COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.data /
+COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/load.js /
 
 FROM rust:1.74.1-buster AS bochs-dev-common
 ARG WASI_VFS_VERSION
@@ -706,6 +818,7 @@ RUN mv packed /out/$OUTPUT_NAME
 
 FROM scratch AS wasi-amd64
 COPY --link --from=bochs-dev-packed /out/ /
+
 
 FROM emscripten/emsdk:$EMSDK_VERSION AS bochs-emscripten
 RUN apt-get install -y wget git

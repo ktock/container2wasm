@@ -41,6 +41,7 @@ func main() {
 		imageRootfsPath   = flag.String("rootfs-path", "/oci/rootfs", "path to rootfs used as overlayfs lowerdir of container rootfs")
 		noVmtouch         = flag.Bool("no-vmtouch", false, "do not perform vmtouch")
 		externalBundle    = flag.Bool("external-bundle", false, "provide bundle externally during runtime")
+		noBinfmt          = flag.Bool("no-binfmt", false, "do not install binfmt")
 	)
 	flag.Parse()
 	args := flag.Args()
@@ -64,7 +65,7 @@ func main() {
 		if err := os.WriteFile("image.json", cfgD, 0600); err != nil {
 			panic(err)
 		}
-		if err := createSpec(bytes.NewReader(cfgD), rootfs, *debug, *debugInit, *imageConfigPath, *runtimeConfigPath, *imageRootfsPath, *noVmtouch); err != nil {
+		if err := createSpec(bytes.NewReader(cfgD), rootfs, *debug, *debugInit, *imageConfigPath, *runtimeConfigPath, *imageRootfsPath, *noVmtouch, *noBinfmt); err != nil {
 			panic(err)
 		}
 	} else {
@@ -275,7 +276,7 @@ func unpackDocker(ctx context.Context, imgDir string, platform *spec.Platform, r
 	return nil, fmt.Errorf("target config not found")
 }
 
-func createSpec(r io.Reader, rootfs string, debug bool, debugInit bool, imageConfigPath, runtimeConfigPath, imageRootfsPath string, noVmtouch bool) error {
+func createSpec(r io.Reader, rootfs string, debug bool, debugInit bool, imageConfigPath, runtimeConfigPath, imageRootfsPath string, noVmtouch bool, noBinfmt bool) error {
 	if rootfs == "" {
 		return fmt.Errorf("rootfs path must be specified")
 	}
@@ -288,8 +289,10 @@ func createSpec(r io.Reader, rootfs string, debug bool, debugInit bool, imageCon
 		return err
 	}
 	var binfmtArch string
-	if arch := config.Architecture; arch != "riscv64" && arch != "amd64" {
-		binfmtArch = arch
+	if !noBinfmt {
+		if arch := config.Architecture; arch != "riscv64" && arch != "amd64" {
+			binfmtArch = arch
+		}
 	}
 	bootConfig, err := generateBootConfig(debug, debugInit, imageConfigPath, runtimeConfigPath, imageRootfsPath, noVmtouch, binfmtArch, false)
 	if err != nil {
