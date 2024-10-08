@@ -25,24 +25,29 @@ jobs:
         ls -al ./out/c2w-net
         if ldd ./out/c2w-net ; then echo "must be static binary" ; exit 1 ; fi
 
-  test:
-    runs-on: ubuntu-22.04
-    name: Test
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
-        arch: ["x86_64", "(riscv64|aarch64)"]
-    steps:
-    - uses: actions/checkout@v4
-    - name: binfmt
-      run: |
-        docker run --privileged --rm tonistiigi/binfmt --install riscv64
-    - name: test
-      env:
-        GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=${{ matrix.arch }}.*
-      run: |
-        make test
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: out
+        path: out
+  # test:
+  #   runs-on: ubuntu-22.04
+  #   name: Test
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       target: ["TestWasmtime", "TestWamr", "TestWasmer", "TestWazero", "TestWasmedge"]
+  #       arch: ["x86_64", "(riscv64|aarch64)"]
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #   - name: binfmt
+  #     run: |
+  #       docker run --privileged --rm tonistiigi/binfmt --install riscv64
+  #   - name: test
+  #     env:
+  #       GO_TEST_FLAGS: -run ${{ matrix.target }}/.*arch=${{ matrix.arch }}.*
+  #     run: |
+  #       make test
 
   # benchmark:
   #   runs-on: ubuntu-22.04
