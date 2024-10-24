@@ -83,7 +83,7 @@ RUN git clone ${QEMU_REPO} /qemu && \
 FROM scratch AS qemu-repo
 COPY --link --from=qemu-repo-base /qemu /
 
-FROM golang:1.22-bullseye AS golang-base
+FROM golang:1.23-bullseye AS golang-base
 FROM golang:1.21-bullseye AS golang-1.21-base
 # go 1.21 is for runc; TODO: use go 1.22
 
