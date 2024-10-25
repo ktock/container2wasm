@@ -9,7 +9,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/opencontainers/runc v1.1.15
 	github.com/opencontainers/runtime-spec v1.2.0
-	github.com/urfave/cli v1.22.15
+	github.com/urfave/cli v1.22.16
 	golang.org/x/net v0.30.0
 	gotest.tools/v3 v3.5.1
 )
@@ -24,7 +24,7 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/ttrpc v1.2.5 // indirect
 	github.com/containerd/typeurl/v2 v2.1.1 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
