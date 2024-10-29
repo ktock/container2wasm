@@ -5,7 +5,8 @@ ARG WASI_SDK_VERSION=19
 ARG WASI_SDK_VERSION_FULL=${WASI_SDK_VERSION}.0
 ARG WASI_VFS_VERSION=v0.3.0
 ARG WIZER_VERSION=04e49c989542f2bf3a112d60fbf88a62cce2d0d0
-ARG EMSDK_VERSION=3.1.50 # TODO: support recent version
+ARG EMSDK_VERSION=3.1.40 # TODO: support recent version
+ARG EMSDK_VERSION_QEMU=3.1.50 # TODO: support recent version
 ARG BINARYEN_VERSION=114
 ARG BUSYBOX_VERSION=1_36_1
 ARG RUNC_VERSION=v1.2.0-rc.2
@@ -343,7 +344,7 @@ FROM wasi-tinyemu AS wasi-mips64
 FROM wasi-tinyemu AS wasi-ppc64le
 FROM wasi-tinyemu AS wasi-s390
 
-FROM emscripten/emsdk:$EMSDK_VERSION AS glib-emscripten-base
+FROM emscripten/emsdk:$EMSDK_VERSION_QEMU AS glib-emscripten-base
 # Porting glib to emscripten inspired by https://github.com/emscripten-core/emscripten/issues/11066
 ENV TARGET=/glib-emscripten/target
 ENV CFLAGS="-O2 -matomics -mbulk-memory -DNDEBUG -sWASM_BIGINT -DWASM_BIGINT -pthread -sMALLOC=mimalloc  -sASYNCIFY=1 "
