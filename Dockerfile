@@ -109,9 +109,9 @@ RUN mkdir -p /out/oci/rootfs /out/oci/bundle && \
     IS_WIZER=false && \
     if test "${OPTIMIZATION_MODE}" = "wizer" ; then IS_WIZER=true ; fi && \
     NO_VMTOUCH_F=false && \
-    if test "${OPTIMIZATION_MODE}" = "native" ; then NO_VMTOUCH_F=true ; fi && \
-    if test "${NO_VMTOUCH}" != "" ; then NO_VMTOUCH_F="${NO_VMTOUCH}" ; fi && \
     NO_BINFMT_F=false && \
+    if test "${OPTIMIZATION_MODE}" = "native" ; then NO_VMTOUCH_F=true ; NO_BINFMT_F=true ; fi && \
+    if test "${NO_VMTOUCH}" != "" ; then NO_VMTOUCH_F="${NO_VMTOUCH}" ; fi && \
     if test "${NO_BINFMT}" != "" ; then NO_BINFMT_F="${NO_BINFMT}" ; fi && \
     EXTERNAL_BUNDLE_F=false && \
     if test "${EXTERNAL_BUNDLE}" = "true" ; then EXTERNAL_BUNDLE_F=true ; fi && \
@@ -327,7 +327,6 @@ RUN make -j $(nproc) -f Makefile \
 FROM scratch AS js-tinyemu
 COPY --link --from=tinyemu-emscripten /out/ /
 FROM js-tinyemu AS js-riscv64
-FROM js-tinyemu AS js-aarch64
 FROM js-tinyemu AS js-arm
 FROM js-tinyemu AS js-i386
 FROM js-tinyemu AS js-mips64
@@ -739,6 +738,8 @@ COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.w
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.worker.js /
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.data /
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/load.js /
+
+FROM js-qemu-aarch64 AS js-aarch64
 
 FROM rust:1.74.1-buster AS bochs-dev-common
 ARG WASI_VFS_VERSION
