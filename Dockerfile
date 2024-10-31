@@ -363,7 +363,7 @@ RUN apt-get update && apt-get install -y \
     pkgconf \
     ninja-build \
     python3-pip
-RUN pip3 install meson
+RUN pip3 install meson==1.5.0
 RUN mkdir /glib-emscripten
 WORKDIR /glib-emscripten
 RUN mkdir -p $TARGET
