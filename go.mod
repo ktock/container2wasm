@@ -1,13 +1,14 @@
 module github.com/ktock/container2wasm
 
 go 1.21
+toolchain go1.22.5
 
 require (
 	github.com/containerd/containerd v1.7.23
 	github.com/containerd/platforms v0.2.1
 	github.com/containers/gvisor-tap-vsock v0.7.5
 	github.com/opencontainers/image-spec v1.1.0
-	github.com/opencontainers/runc v1.1.15
+	github.com/opencontainers/runc v1.2.1
 	github.com/opencontainers/runtime-spec v1.2.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/net v0.30.0
@@ -34,7 +35,7 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20240710054256-ddd8a41251c9 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/miekg/dns v1.1.62 // indirect
-	github.com/moby/sys/mountinfo v0.6.2 // indirect
+	github.com/moby/sys/mountinfo v0.7.1 // indirect
 	github.com/moby/sys/sequential v0.5.0 // indirect
 	github.com/moby/sys/user v0.3.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
