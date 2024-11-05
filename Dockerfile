@@ -31,7 +31,7 @@ ARG TINYEMU_REPO_VERSION=e4e9bd198f9c0505ab4c77a6a9d038059cd1474a
 ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
-ARG QEMU_REPO=https://github.com/ktock/qemu
+ARG QEMU_REPO=https://github.com/ktock/qemu-wasm
 ARG QEMU_REPO_VERSION=63f28911e6e2ba9cfef73897a8e676d6a1eb19bb
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
@@ -720,17 +720,23 @@ COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.work
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.data /
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/load.js /
 
+FROM qemu-emscripten-dev AS qemu-emscripten-dev-aarch64-images
+COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
+COPY --link --from=linux-aarch64-dev-qemu /out/bzImage /pack/
+RUN rm /pack/edk2-aarch64-code.fd || true
+RUN cp /qemu/pc-bios/edk2-aarch64-code.fd.bz2 /pack/
+RUN bzip2 -d /pack/edk2-aarch64-code.fd.bz2
+
+FROM scratch AS qemu-emscripten-dev-aarch64-pack
+COPY --link --from=qemu-emscripten-dev-aarch64-images /pack /
+
 FROM qemu-emscripten-dev AS qemu-emscripten-dev-aarch64
 RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((2048*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 " ; \
     emconfigure ../configure --static --target-list=aarch64-softmmu --cpu=wasm32 --cross-prefix= \
     --without-default-features --enable-system --with-coroutine=fiber \
     --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY" && \
     emmake make -j $(nproc) qemu-system-aarch64
-COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
-COPY --link --from=linux-aarch64-dev-qemu /out/bzImage /pack/
-RUN rm /pack/edk2-aarch64-code.fd || true
-RUN cp /qemu/pc-bios/edk2-aarch64-code.fd.bz2 /pack/
-RUN bzip2 -d /pack/edk2-aarch64-code.fd.bz2
+COPY --link --from=qemu-emscripten-dev-aarch64-pack / /pack
 RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-aarch64.data --preload /pack > load.js
 
 FROM scratch AS js-qemu-aarch64
