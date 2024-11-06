@@ -20,6 +20,8 @@ ARG NO_VMTOUCH=
 ARG EXTERNAL_BUNDLE=
 ARG NO_BINFMT=
 
+ARG LOAD_MODE=single # or separated
+
 ARG OUTPUT_NAME=out.wasm # for wasi
 ARG JS_OUTPUT_NAME=out # for emscripten; must not include "."
 ARG OPTIMIZATION_MODE=wizer # "wizer" or "native"
@@ -32,7 +34,7 @@ ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
 ARG QEMU_REPO=https://github.com/ktock/qemu-wasm
-ARG QEMU_REPO_VERSION=63f28911e6e2ba9cfef73897a8e676d6a1eb19bb
+ARG QEMU_REPO_VERSION=b9d652ca63a2d454d5fa49cd1dce582a881effa2
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.6.5
@@ -711,14 +713,34 @@ RUN cp /qemu/pc-bios/bios-256k.bin /pack/
 RUN cp /qemu/pc-bios/kvmvapic.bin /pack/
 RUN cp /qemu/pc-bios/linuxboot_dma.bin /pack/
 RUN cp /qemu/pc-bios/vgabios-stdvga.bin /pack/
-RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-x86_64.data --preload /pack > load.js
+# RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-x86_64.data --preload /pack > load.js
+RUN if test "${LOAD_MODE}" = "single" ; then \
+      /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-aarch64.data --preload /pack > load.js ; \
+    else \
+      mkdir /load && \
+      mkdir /image && cp /pack/bzImage /image/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/image.data --preload /image > /load/image-load.js && \
+      mkdir /rootfs && cp /pack/rootfs.bin /rootfs/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/rootfs.data --preload /rootfs > /load/rootfs-load.js && \
+      mkdir /bios && \
+      cp /pack/bios-256k.bin /bios/ && \
+      cp /pack/kvmvapic.bin /bios/ && \
+      cp /pack/linuxboot_dma.bin /bios/ && \
+      cp /pack/vgabios-stdvga.bin /bios/ && \
+      /emsdk/upstream/emscripten/tools/file_packager.py /load/bios.data --preload /bios > /load/bios-load.js ; \
+    fi
 
-FROM scratch AS js-qemu-amd64
+FROM scratch AS js-qemu-amd64-base
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64 /out.js
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.wasm /
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.worker.js /
+
+FROM js-qemu-amd64-base AS js-qemu-amd64-single
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.data /
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/load.js /
+
+FROM js-qemu-amd64-base AS js-qemu-amd64-separated
+COPY --link --from=qemu-emscripten-dev-amd64 /load /
+
+FROM js-qemu-amd64-${LOAD_MODE} AS js-qemu-amd64
 
 FROM qemu-emscripten-dev AS qemu-emscripten-dev-aarch64-images
 COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
@@ -731,22 +753,35 @@ FROM scratch AS qemu-emscripten-dev-aarch64-pack
 COPY --link --from=qemu-emscripten-dev-aarch64-images /pack /
 
 FROM qemu-emscripten-dev AS qemu-emscripten-dev-aarch64
+ARG LOAD_MODE
 RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((2048*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 " ; \
     emconfigure ../configure --static --target-list=aarch64-softmmu --cpu=wasm32 --cross-prefix= \
     --without-default-features --enable-system --with-coroutine=fiber \
     --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY" && \
     emmake make -j $(nproc) qemu-system-aarch64
 COPY --link --from=qemu-emscripten-dev-aarch64-pack / /pack
-RUN /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-aarch64.data --preload /pack > load.js
+RUN if test "${LOAD_MODE}" = "single" ; then \
+      /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-aarch64.data --preload /pack > load.js ; \
+    else \
+      mkdir /load && \
+      mkdir /image && cp /pack/bzImage /image/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/image.data --preload /image > /load/image-load.js && \
+      mkdir /rootfs && cp /pack/rootfs.bin /rootfs/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/rootfs.data --preload /rootfs > /load/rootfs-load.js && \
+      mkdir /edk2 && cp /pack/edk2-aarch64-code.fd /edk2/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/edk2.data --preload /edk2 > /load/edk2-load.js ; \
+    fi
 
-FROM scratch AS js-qemu-aarch64
+FROM scratch AS js-qemu-aarch64-base
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64 /out.js
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.wasm /
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.worker.js /
+
+FROM js-qemu-aarch64-base AS js-qemu-aarch64-single
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.data /
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/load.js /
 
-FROM js-qemu-aarch64 AS js-aarch64
+FROM js-qemu-aarch64-base AS js-qemu-aarch64-separated
+COPY --link --from=qemu-emscripten-dev-aarch64 /load /
+
+FROM js-qemu-aarch64-$LOAD_MODE AS js-aarch64
 
 FROM rust:1.74.1-buster AS bochs-dev-common
 ARG WASI_VFS_VERSION
