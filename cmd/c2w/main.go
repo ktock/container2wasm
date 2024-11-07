@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/archive"
+	"github.com/containerd/platforms"
 	vendor "github.com/ktock/container2wasm"
 	"github.com/ktock/container2wasm/version"
 	"github.com/urfave/cli"
@@ -315,12 +316,22 @@ func prepareSourceImg(builderPath, imgName, tmpdir, targetarch string) error {
 	if idata, err := exec.Command(builderPath, "image", "inspect", imgName).Output(); err != nil {
 		needsPull = true
 	} else if targetarch != "" {
+		p, err := platforms.Parse(targetarch)
+		if err != nil {
+			return fmt.Errorf("failed to parse arch %q", targetarch)
+		}
+		mc := platforms.Only(p)
 		inspectData := make([]map[string]interface{}, 1)
 		if err := json.Unmarshal(idata, &inspectData); err != nil {
 			return err
 		}
-		if a := inspectData[0]["Architecture"]; a != targetarch {
-			log.Printf("unexpected archtecture %v (target: %v). Try \"--target-arch\" when specifying an architecture.\n", a, targetarch)
+		imageArch := inspectData[0]["Architecture"].(string)
+		imagePlatform, err := platforms.Parse(imageArch)
+		if err != nil {
+			log.Printf("failed to parse archtecture of image (%q): %v\n", imageArch, err)
+			needsPull = true
+		} else if !mc.Match(imagePlatform) {
+			log.Printf("unexpected archtecture %v (target: %v). Try \"--target-arch\" when specifying an architecture.\n", imageArch, targetarch)
 			needsPull = true
 		}
 	}
