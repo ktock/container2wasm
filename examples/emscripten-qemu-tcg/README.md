@@ -1,6 +1,6 @@
 # Experimental support for QEMU TCG (x86_64)
 
-c2w experimentally integrates QEMU TCG on Wasm(emscripten).
+c2w experimentally integrates QEMU TCG on Wasm(emscripten), using [QEMU Wasm](https://github.com/ktock/qemu-wasm).
 Multicore CPUs can also be enabled leveraging MTTCG(Multi-Threded TCG).
 
 > NOTE: Example of AArch64 container with QEMU TCG is available at [./../emscripten-aarch64](./../emscripten-aarch64)

@@ -1,6 +1,6 @@
 # Raspberry Pi board emulation on browser
 
-c2w experimentally integrates QEMU TCG on Wasm(emscripten).
+c2w experimentally integrates QEMU TCG on Wasm(emscripten), using [QEMU Wasm](https://github.com/ktock/qemu-wasm).
 QEMU supports emulating a variety of borads including Rasberry Pi boards.
 This document shows an example of Raspberry Pi (`raspi3ap`) emulated on browser
 
