@@ -1,6 +1,6 @@
 # Running AArch64 container on browser with emscripten and experimental QEMU TCG mode
 
-c2w experimentally integrates QEMU TCG on Wasm(emscripten).
+c2w experimentally integrates QEMU TCG on Wasm(emscripten), using [QEMU Wasm](https://github.com/ktock/qemu-wasm).
 AArch64 containers can run on the browser leveraging this.
 Multicore CPUs can also be enabled leveraging MTTCG(Multi-Threded TCG).
 
