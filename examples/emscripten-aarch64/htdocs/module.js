@@ -8,7 +8,7 @@ Module['arguments'] = [
     '-nic', 'none',
     '-drive', 'if=virtio,format=raw,file=/pack/rootfs.bin',
     '-kernel', '/pack/bzImage',
-    '-append', 'earlyprintk=hvc0 console=hvc0 root=/dev/vda rootwait ro loglevel=7 NO_RUNTIME_CONFIG=1 init=/sbin/tini -- /sbin/init',
+    '-append', 'earlyprintk=hvc0 console=hvc0 root=/dev/vda rootwait no_console_suspend ro loglevel=7 NO_RUNTIME_CONFIG=1 init=/sbin/tini -- /sbin/init',
     '-device', 'virtio-serial,id=virtio-serial0',
     '-chardev', 'stdio,id=charconsole0,mux=on',
     '-device', 'virtconsole,chardev=charconsole0,id=console0'
