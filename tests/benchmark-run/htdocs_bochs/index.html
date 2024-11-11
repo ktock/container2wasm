@@ -1,0 +1,65 @@
+<html>
+  <head>
+    <title>container + emscripten</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.17.0/css/xterm.css">
+  </head>
+  <body>
+    <div id="terminal"></div>
+    <div id="result-duration"></div>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@4.17.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-pty@0.9.4/index.js"></script>
+    <script>
+      const xterm = new Terminal();
+      xterm.open(document.getElementById("terminal"));
+
+      const { master, slave } = openpty();
+
+      termios = slave.ioctl("TCGETS");
+      termios.iflag &= ~(/*IGNBRK | BRKINT | PARMRK |*/ ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+      termios.oflag &= ~(OPOST);
+      termios.lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+      //termios.cflag &= ~(CSIZE | PARENB);
+      //termios.cflag |= CS8;
+      slave.ioctl("TCSETS", new Termios(termios.iflag, termios.oflag, termios.cflag, termios.lflag, termios.cc));
+      xterm.loadAddon(master);
+      const worker = new Worker("./worker.js"+location.search);
+
+      var startTime;
+      var startcnt = 0;
+      var stopcnt = 0;
+      var _write = slave.write;
+      slave.write = function(d) {
+          const s = new TextDecoder().decode(new Uint8Array(d));
+          //console.log(s);
+          if (s == ">") {
+              startcnt++;
+              return;
+          } else if (s == "<") {
+              stopcnt++;
+              return;
+          } else if ((s == "*") && (startcnt >= 5)) {
+              startTime = new Date();
+              console.log(JSON.stringify({
+                  time: startTime,
+                  message: "start timer",
+              }));
+              document.getElementById('result-duration').innerHTML = "measuring...";
+          } else if ((s == "*") && (stopcnt >= 5)) {
+              const endTime = new Date();
+              const seconds = (endTime.getTime() - startTime.getTime()) / 1000;
+              console.log(JSON.stringify({
+                  time: endTime,
+                  duration: seconds,
+                  message: "found wanted string",
+                  raw_string: s,
+              }));
+              document.getElementById('result-duration').innerHTML = seconds;
+          }
+          startcnt = 0;
+          stopcnt = 0;
+          _write.apply(slave, [d]);
+      }
+      new TtyServer(slave).start(worker);
+    </script>
+  </body>
+</html>
