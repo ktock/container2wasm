@@ -19,9 +19,9 @@ import (
 	ctdoci "github.com/containerd/containerd/oci"
 	"github.com/containerd/platforms"
 	inittype "github.com/ktock/container2wasm/cmd/init/types"
+	"github.com/moby/sys/user"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	spec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/opencontainers/runc/libcontainer/user"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
