@@ -51,6 +51,7 @@ type Input struct {
 	ConvertOpts  []string
 	Architecture Architecture
 	Dockerfile   string
+	BuildArgs    []string
 	Mirror       bool
 	Store        string
 	External     bool
@@ -95,7 +96,7 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 				if in.Dockerfile != "" {
 					df := filepath.Join(tmpdir, "Dockerfile-integrationtest")
 					assert.NilError(t, os.WriteFile(df, []byte(in.Dockerfile), 0755))
-					dcmd := exec.Command("docker", "build", "--progress=plain", "-t", in.Image, "-f", df, AssetPath)
+					dcmd := exec.Command("docker", append([]string{"build", "--progress=plain", "-t", in.Image, "-f", df, AssetPath}, in.BuildArgs...)...)
 					dcmd.Stdout = os.Stdout
 					dcmd.Stderr = os.Stderr
 					assert.NilError(t, dcmd.Run())

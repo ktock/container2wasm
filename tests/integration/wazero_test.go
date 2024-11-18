@@ -134,7 +134,7 @@ RUN apt-get update && apt-get install -y wget
 				{Image: "debian-wget-rv64", ConvertOpts: []string{"--target-arch=riscv64"}, Architecture: utils.RISCV64, Dockerfile: `
 FROM riscv64/debian:sid-slim
 RUN apt-get update && apt-get install -y wget
-`},
+`, BuildArgs: []string{"--platform=linux/riscv64"}},
 			},
 			Prepare: func(t *testing.T, env utils.Env) {
 				assert.NilError(t, os.WriteFile(filepath.Join(env.Workdir, "httphello-vm-port"), []byte(fmt.Sprintf("%d", utils.GetPort(t))), 0755))
