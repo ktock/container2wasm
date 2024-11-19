@@ -172,6 +172,8 @@ func RunTestRuntimes(t *testing.T, tests ...TestSpec) {
 
 				assert.NilError(t, testCmd.Start())
 
+				time.Sleep(3 * time.Second) // wait for container fully up-and-running. TODO: introduce synchronization
+				
 				tt.Want(t, envInfo, inW, io.TeeReader(outR, os.Stdout))
 				inW.Close()
 
