@@ -810,6 +810,7 @@ func fsFromImage(ctx context.Context, addr string, platform imagespec.Platform, 
 			return nil, nil, nil, nil, err
 		}
 	}
+	imgFS.addDots()
 	return &config, imgFS.n, configData, waitInit, nil
 }
 
@@ -988,6 +989,14 @@ func newTarNode(q *qidSet, trRaw io.ReaderAt) (*NodeLayer, error) {
 		return c, nil
 	}
 
+	getnode := func(n *Node, base string) (c *Node, err error) {
+		var ok bool
+		if c, ok = n.children[base]; !ok {
+			return nil, fmt.Errorf("Node %q not found", base)
+		}
+		return c, nil
+	}
+
 	var whiteouts []string
 	var opaqueWhiteouts []string
 
@@ -1039,6 +1048,19 @@ func newTarNode(q *qidSet, trRaw io.ReaderAt) (*NodeLayer, error) {
 			} else {
 				whiteouts = append(whiteouts, fullname)
 			}
+		case h.Typeflag == tar.TypeLink:
+			if h.Linkname == "" {
+				return nil, fmt.Errorf("Linkname of hardlink %q is not found", fullname)
+			}
+			// This node is a hardlink. Same as major tar tools(GNU tar etc.),
+			// we pretend that the target node of this hard link has already been appeared.
+			target, err := walkDown(n, filepath.Clean(h.Linkname), getnode)
+			if err != nil {
+				return nil, fmt.Errorf("hardlink(%q ==> %q) is not found: %w",
+					fullname, h.Linkname, err)
+			}
+			target.attr.NLink++
+			parentDir.children[base] = target
 		default:
 			// Normal node so simply create it.
 			if parentDir.children == nil {
@@ -1826,8 +1848,11 @@ func (a *applier) ApplyNodes(nodes NodeLayer) error {
 	if err != nil {
 		return err
 	}
-	a.n = addDots(a.n, nil)
 	return nil
+}
+
+func (a *applier) addDots() {
+	addDots(a.n, nil)
 }
 
 type qidSet struct {
@@ -1885,18 +1910,22 @@ func addDots(a *Node, parent *Node) *Node {
 		if a.children == nil {
 			a.children = make(map[string]*Node)
 		}
-		a.children["."] = a
-		if parent != nil {
-			a.children[".."] = parent
-		} else {
-			a.children[".."] = a
+		if _, ok := a.children["."]; !ok {
+			a.attr.NLink++
+			a.children["."] = a
+		}
+		if _, ok := a.children[".."]; !ok {
+			if parent != nil {
+				parent.attr.NLink++
+				a.children[".."] = parent
+			}
 		}
 	}
 	for name, c := range a.children {
 		if name == "." || name == ".." {
 			continue
 		}
-		a.children[name] = addDots(c, a)
+		addDots(c, a)
 	}
 	return a
 }
@@ -1981,7 +2010,7 @@ func metadataToAttr(m esgzmetadata.Attr) (p9.Attr, p9.QID) {
 	out.Mode = p9.ModeFromOS(m.Mode)
 	out.UID = p9.UID(m.UID)
 	out.GID = p9.GID(m.GID)
-	// out.NLink TOOD
+	out.NLink = 1
 	out.RDev = p9.Dev(mkdev(uint32(m.DevMajor), uint32(m.DevMinor)))
 	out.Size = uint64(m.Size)
 	out.BlockSize = uint64(p9DefaultBlockSize)
@@ -2307,7 +2336,7 @@ func headerToAttr(h *tar.Header) (p9.Attr, p9.QID) {
 	out.Mode = p9.ModeFromOS(h.FileInfo().Mode())
 	out.UID = p9.UID(h.Uid)
 	out.GID = p9.GID(h.Gid)
-	// out.NLink TOOD
+	out.NLink = 1
 	out.RDev = p9.Dev(mkdev(uint32(h.Devmajor), uint32(h.Devminor)))
 	out.Size = uint64(h.Size)
 	out.BlockSize = uint64(p9DefaultBlockSize)
