@@ -3,7 +3,7 @@ module github.com/ktock/container2wasm
 go 1.21
 
 require (
-	github.com/containerd/containerd v1.7.23
+	github.com/containerd/containerd v1.7.24
 	github.com/containerd/platforms v0.2.1
 	github.com/containers/gvisor-tap-vsock v0.7.5
 	github.com/opencontainers/image-spec v1.1.0
@@ -47,7 +47,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.29.0 // indirect
 	golang.org/x/mod v0.19.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sync v0.9.0 // indirect
 	golang.org/x/sys v0.27.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.23.0 // indirect
