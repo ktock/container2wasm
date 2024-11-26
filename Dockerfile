@@ -9,7 +9,7 @@ ARG EMSDK_VERSION=3.1.40 # TODO: support recent version
 ARG EMSDK_VERSION_QEMU=3.1.50 # TODO: support recent version
 ARG BINARYEN_VERSION=114
 ARG BUSYBOX_VERSION=1.36.1
-ARG RUNC_VERSION=v1.2.0-rc.2
+ARG RUNC_VERSION=v1.2.2
 
 # ARG LINUX_LOGLEVEL=0
 # ARG INIT_DEBUG=false
@@ -87,8 +87,6 @@ FROM scratch AS qemu-repo
 COPY --link --from=qemu-repo-base /qemu /
 
 FROM golang:1.23-bullseye AS golang-base
-FROM golang:1.21-bullseye AS golang-1.21-base
-# go 1.21 is for runc; TODO: use go 1.22
 
 FROM golang-base AS bundle-dev
 ARG TARGETPLATFORM
@@ -176,7 +174,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     GOARCH=riscv64 go build -ldflags "-s -w -extldflags '-static'" -tags "osusergo netgo static_build" -o /out/init ./cmd/init
 
-FROM golang-1.21-base AS runc-riscv64-dev
+FROM golang-base AS runc-riscv64-dev
 ARG RUNC_VERSION
 RUN apt-get update -y && apt-get install -y gcc-riscv64-linux-gnu libc-dev-riscv64-cross git make gperf
 RUN --mount=type=cache,target=/root/.cache/go-build \
@@ -518,7 +516,7 @@ RUN make LDFLAGS=--static -j$(nproc)
 RUN for i in $(./busybox --list) ; do ln -s busybox /out/bin/$i ; done
 RUN mkdir -p /out/usr/share/udhcpc/ && cp ./examples/udhcp/simple.script /out/usr/share/udhcpc/default.script
 
-FROM golang-1.21-base AS runc-amd64-dev
+FROM golang-base AS runc-amd64-dev
 ARG RUNC_VERSION
 RUN apt-get update -y && apt-get install -y git make gperf
 RUN --mount=type=cache,target=/root/.cache/go-build \
