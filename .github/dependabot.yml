@@ -7,6 +7,36 @@ updates:
     schedule:
       interval: "daily"
 
+  # Automatic upgrade for go modules.
+  - package-ecosystem: "gomod"
+    directory: "/extras/c2w-net-proxy"
+    schedule:
+      interval: "daily"
+
+  # Automatic upgrade for go modules.
+  - package-ecosystem: "gomod"
+    directory: "/extras/imagemounter"
+    schedule:
+      interval: "daily"
+
+  # Automatic upgrade for go modules.
+  - package-ecosystem: "gomod"
+    directory: "/tests/c2w-net-proxy-test"
+    schedule:
+      interval: "daily"
+
+  # Automatic upgrade for go modules.
+  - package-ecosystem: "gomod"
+    directory: "/tests/imagemounter-test"
+    schedule:
+      interval: "daily"
+
+  # Automatic upgrade for go modules.
+  - package-ecosystem: "gomod"
+    directory: "/tests/wazero"
+    schedule:
+      interval: "daily"
+
   # Automatic upgrade for Github Actions
   - package-ecosystem: "github-actions"
     directory: "/" # means ".github/workflows"
