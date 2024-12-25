@@ -768,6 +768,7 @@ RUN cp /qemu/pc-bios/bios-256k.bin /pack/
 RUN cp /qemu/pc-bios/kvmvapic.bin /pack/
 RUN cp /qemu/pc-bios/linuxboot_dma.bin /pack/
 RUN cp /qemu/pc-bios/vgabios-stdvga.bin /pack/
+RUN cp /qemu/pc-bios/efi-virtio.rom /pack/
 
 COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
 COPY --link --from=qemu-config-dev-amd64 /out/args-before-cp.json /
@@ -787,6 +788,7 @@ COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
 COPY --link --from=linux-aarch64-dev-qemu /out/bzImage /pack/
 RUN cp /qemu/pc-bios/edk2-aarch64-code.fd.bz2 /pack/
 RUN bzip2 -d /pack/edk2-aarch64-code.fd.bz2
+RUN cp /qemu/pc-bios/efi-virtio.rom /pack/
 
 COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
 COPY --link --from=qemu-config-dev-aarch64 /out/args-before-cp.json /

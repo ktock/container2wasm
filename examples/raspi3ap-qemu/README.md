@@ -5,15 +5,15 @@ QEMU supports emulating a variety of borads including Rasberry Pi boards.
 This document shows an example of Raspberry Pi (`raspi3ap`) emulated on browser
 
 > NOTE1: Example of AArch64 container with QEMU TCG is available at [./../emscripten-aarch64](./../emscripten-aarch64)
-> NOTE2: Example of x86_64 container with QEMU TCG is available at [./../emscripten-qemu-tcg](./../emscripten-qemu-tcg)
+> NOTE2: Example of x86_64 container with QEMU TCG is available at [./../emscripten-qemu](./../emscripten-qemu)
 
 This example runs busybox on the emulated board.
 
 Prepare images to use on the board.
 
 ```
-$ mkdir /tmp/out/
-$ docker build --output=type=local,dest=/tmp/out/ ./examples/raspi3ap-qemu/image/
+$ mkdir /tmp/out/pack/
+$ docker build --output=type=local,dest=/tmp/out/pack/ ./examples/raspi3ap-qemu/image/
 ```
 
 Make them runnable on browser using c2w command and serve them on localhost.

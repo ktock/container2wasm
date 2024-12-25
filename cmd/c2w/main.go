@@ -208,7 +208,7 @@ func build(builderPath string, srcImgPath string, destDir, destFile string, clic
 		buildxArgs = append(buildxArgs, "--build-context", fmt.Sprintf("assets=%s", o))
 	}
 	if o := clicontext.String("pack"); o != "" {
-		buildxArgs = append(buildxArgs, "--build-context", fmt.Sprintf("qemu-emscripten-dev-aarch64-pack=%s", o))
+		buildxArgs = append(buildxArgs, "--build-context", fmt.Sprintf("qemu-aarch64-pack=%s", o))
 	}
 	if clicontext.Bool("to-js") {
 		buildxArgs = append(buildxArgs,
