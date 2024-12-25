@@ -16,6 +16,8 @@ ARG RUNC_VERSION=v1.2.2
 ARG LINUX_LOGLEVEL=7
 ARG INIT_DEBUG=true
 ARG VM_MEMORY_SIZE_MB=128
+ARG VM_CORE_NUMS=1
+ARG QEMU_CPR=true
 ARG NO_VMTOUCH=
 ARG EXTERNAL_BUNDLE=
 ARG NO_BINFMT=
@@ -34,7 +36,7 @@ ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
 ARG QEMU_REPO=https://github.com/ktock/qemu-wasm
-ARG QEMU_REPO_VERSION=7ce4a680cb3b402bc4331891ea94fea0a57ec853
+ARG QEMU_REPO_VERSION=3aa8817688956053e878bb18b2aeccc168439fbf
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.7.0
@@ -357,6 +359,7 @@ ENV PKG_CONFIG_PATH="$TARGET/lib/pkgconfig"
 ENV EM_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
 ENV CHOST="wasm32-unknown-linux"
 ENV MAKEFLAGS="-j$(nproc)"
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     autoconf \
     build-essential \
@@ -364,8 +367,8 @@ RUN apt-get update && apt-get install -y \
     libtool \
     pkgconf \
     ninja-build \
-    python3-pip
-RUN pip3 install meson==1.5.0
+    pipx
+RUN PIPX_BIN_DIR=/usr/local/bin pipx install meson==1.5.0
 RUN mkdir /glib-emscripten
 WORKDIR /glib-emscripten
 RUN mkdir -p $TARGET
@@ -705,19 +708,101 @@ RUN mkdir -p build
 WORKDIR /qemu/build
 RUN npm i xterm-pty
 
-FROM qemu-emscripten-dev AS qemu-emscripten-dev-amd64
-ARG LOAD_MODE
-RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((3000*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js" ; \
-    emconfigure ../configure --static --target-list=x86_64-softmmu --cpu=wasm32 --cross-prefix= \
-    --without-default-features --enable-system --with-coroutine=fiber \
-    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY" && \
-    emmake make -j $(nproc) qemu-system-x86_64
+FROM golang-base AS get-qemu-state-dev
+COPY --link --from=assets / /work
+RUN mkdir /out/
+WORKDIR /work
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go build -o /out/get-qemu-state ./cmd/get-qemu-state
+
+FROM ubuntu:22.04 AS qemu-config-dev-amd64
+ARG LINUX_LOGLEVEL
+ARG VM_MEMORY_SIZE_MB
+ARG VM_CORE_NUMS
+ARG QEMU_CPR
+RUN apt-get update && apt-get install -y gettext-base && mkdir /out
+COPY --link --from=assets /config/qemu/args-x86_64.json.template /args.json.template
+RUN CPR_FLAGS= ; \
+    if test "${QEMU_CPR}" = "true"  ; then \
+      CPR_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
+    fi && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR=$CPR_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
+RUN echo "Module['arguments'] =" > /out/arg-module.js
+RUN cat /out/args.json >> /out/arg-module.js
+RUN echo ";" >> /out/arg-module.js
+
+FROM ubuntu:22.04 AS qemu-config-dev-aarch64
+ARG LINUX_LOGLEVEL
+ARG VM_MEMORY_SIZE_MB
+ARG VM_CORE_NUMS
+ARG QEMU_CPR
+RUN apt-get update && apt-get install -y gettext-base && mkdir /out
+COPY --link --from=assets /config/qemu/args-aarch64.json.template /args.json.template
+RUN CPR_FLAGS= ; \
+    if test "${QEMU_CPR}" = "true"  ; then \
+      CPR_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
+    fi && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR=$CPR_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
+RUN echo "Module['arguments'] =" > /out/arg-module.js
+RUN cat /out/args.json >> /out/arg-module.js
+RUN echo ";" >> /out/arg-module.js
+
+FROM gcc:14 AS qemu-native-dev
+RUN apt-get update && apt-get install -y libffi-dev libglib2.0-dev libpixman-1-dev libattr1 libattr1-dev ninja-build pipx
+RUN PIPX_BIN_DIR=/usr/local/bin pipx install meson==1.5.0
+COPY --link --from=qemu-repo / /qemu
+
+FROM qemu-native-dev AS qemu-x86_64-pack
+WORKDIR /qemu/build/
+RUN ../configure --static --target-list=x86_64-softmmu --cross-prefix= \
+    --without-default-features --enable-system --with-coroutine=ucontext --enable-virtfs --enable-attr
+RUN make -j $(nproc) qemu-system-x86_64
+
+RUN mkdir -p /pack/
 COPY --link --from=rootfs-amd64-dev /out/rootfs.bin /pack/
 COPY --link --from=linux-amd64-dev-qemu /out/bzImage /pack/
 RUN cp /qemu/pc-bios/bios-256k.bin /pack/
 RUN cp /qemu/pc-bios/kvmvapic.bin /pack/
 RUN cp /qemu/pc-bios/linuxboot_dma.bin /pack/
 RUN cp /qemu/pc-bios/vgabios-stdvga.bin /pack/
+
+COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
+COPY --link --from=qemu-config-dev-amd64 /out/args-before-cp.json /
+RUN mkdir -p /tmp/wasi0 /tmp/wasi1
+WORKDIR /qemu/build/
+ARG QEMU_CPR
+RUN if test "${QEMU_CPR}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-x86_64 ; fi
+
+FROM qemu-native-dev AS qemu-aarch64-pack
+WORKDIR /qemu/build/
+RUN ../configure --static --target-list=aarch64-softmmu --cross-prefix= \
+    --without-default-features --enable-system --with-coroutine=ucontext --enable-virtfs --enable-attr
+RUN make -j $(nproc) qemu-system-aarch64
+
+RUN mkdir -p /pack/
+COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
+COPY --link --from=linux-aarch64-dev-qemu /out/bzImage /pack/
+RUN cp /qemu/pc-bios/edk2-aarch64-code.fd.bz2 /pack/
+RUN bzip2 -d /pack/edk2-aarch64-code.fd.bz2
+
+COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
+COPY --link --from=qemu-config-dev-aarch64 /out/args-before-cp.json /
+RUN mkdir -p /tmp/wasi0 /tmp/wasi1
+WORKDIR /qemu/build/
+ARG QEMU_CPR
+RUN if test "${QEMU_CPR}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-aarch64 ; fi
+
+FROM qemu-emscripten-dev AS qemu-emscripten-dev-amd64
+ARG LOAD_MODE
+RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=$((3000*1024*1024)) -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js" ; \
+    emconfigure ../configure --static --target-list=x86_64-softmmu --cpu=wasm32 --cross-prefix= \
+    --without-default-features --enable-system --with-coroutine=fiber --enable-virtfs \
+    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY,FS" && \
+    emmake make -j $(nproc) qemu-system-x86_64
+COPY --from=qemu-x86_64-pack /pack /pack
 RUN if test "${LOAD_MODE}" = "single" ; then \
       /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-x86_64.data --preload /pack > load.js ; \
     else \
@@ -736,6 +821,7 @@ FROM scratch AS js-qemu-amd64-base
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64 /out.js
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.wasm /
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.worker.js /
+COPY --link --from=qemu-config-dev-amd64 /out/arg-module.js /
 
 FROM js-qemu-amd64-base AS js-qemu-amd64-single
 COPY --link --from=qemu-emscripten-dev-amd64 /qemu/build/qemu-system-x86_64.data /
@@ -746,24 +832,14 @@ COPY --link --from=qemu-emscripten-dev-amd64 /load /
 
 FROM js-qemu-amd64-${LOAD_MODE} AS js-qemu-amd64
 
-FROM qemu-emscripten-dev AS qemu-emscripten-dev-aarch64-images
-COPY --link --from=rootfs-aarch64-dev /out/rootfs.bin /pack/
-COPY --link --from=linux-aarch64-dev-qemu /out/bzImage /pack/
-RUN rm /pack/edk2-aarch64-code.fd || true
-RUN cp /qemu/pc-bios/edk2-aarch64-code.fd.bz2 /pack/
-RUN bzip2 -d /pack/edk2-aarch64-code.fd.bz2
-
-FROM scratch AS qemu-emscripten-dev-aarch64-pack
-COPY --link --from=qemu-emscripten-dev-aarch64-images /pack /
-
 FROM qemu-emscripten-dev AS qemu-emscripten-dev-aarch64
 ARG LOAD_MODE
 RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=2300MB -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 " ; \
     emconfigure ../configure --static --target-list=aarch64-softmmu --cpu=wasm32 --cross-prefix= \
-    --without-default-features --enable-system --with-coroutine=fiber \
-    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY" && \
+    --without-default-features --enable-system --with-coroutine=fiber --enable-virtfs \
+    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY,FS" && \
     emmake make -j $(nproc) qemu-system-aarch64
-COPY --link --from=qemu-emscripten-dev-aarch64-pack / /pack
+COPY --from=qemu-aarch64-pack /pack /pack
 RUN if test "${LOAD_MODE}" = "single" ; then \
       /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-aarch64.data --preload /pack > load.js ; \
     else \
@@ -777,6 +853,7 @@ FROM scratch AS js-qemu-aarch64-base
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64 /out.js
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.wasm /
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.worker.js /
+COPY --link --from=qemu-config-dev-aarch64 /out/arg-module.js /
 
 FROM js-qemu-aarch64-base AS js-qemu-aarch64-single
 COPY --link --from=qemu-emscripten-dev-aarch64 /qemu/build/qemu-system-aarch64.data /

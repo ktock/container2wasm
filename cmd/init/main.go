@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	inittype "github.com/ktock/container2wasm/cmd/init/types"
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -75,7 +77,7 @@ func doInit() error {
 		return err
 	}
 
-	if os.Getenv("NO_RUNTIME_CONFIG") != "1" {
+	if os.Getenv("NO_RUNTIME_CONFIG") != "1" && os.Getenv("QEMU_MODE") != "1" {
 		// WASI-related filesystems
 		for _, tag := range []string{rootFSTag, packFSTag} {
 			dst := filepath.Join("/mnt", tag)
@@ -116,7 +118,7 @@ func doInit() error {
 	}
 
 	var info runtimeFlags
-	if os.Getenv("NO_RUNTIME_CONFIG") != "1" {
+	if os.Getenv("NO_RUNTIME_CONFIG") != "1" && os.Getenv("QEMU_MODE") != "1" {
 		// Wizer snapshot can be created by the host here
 		//////////////////////////////////////////////////////////////////////
 		fmt.Printf("==========") // special string not printed
@@ -146,6 +148,52 @@ func doInit() error {
 		log.Printf("INFO:\n%s\n", string(infoD))
 		info = parseInfo(infoD)
 		//log.Printf("Running: %+v\n", s.Process.Args)
+	}
+
+	if os.Getenv("NO_RUNTIME_CONFIG") != "1" && os.Getenv("QEMU_MODE") == "1" {
+		packFSDst := filepath.Join("/mnt", packFSTag)
+		if err := os.Mkdir(packFSDst, 0777); err != nil {
+			return err
+		}
+		// QEMU CPR snapshot can be created here
+		//////////////////////////////////////////////////////////////////////
+		fmt.Printf("==========") // special string not printed
+		for {
+			time.Sleep(time.Second) // expect a snapshot is taken
+			if err := syscall.Mount(packFSTag, packFSDst, "9p", 0, "trans=virtio,version=9p2000.L"); err != nil {
+				//return fmt.Errorf("failed mounting(pack) %q: %w", packFSTag, err)
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(packFSDst, "info")); err == nil {
+				break // info file exists
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("failed to stat info file: %w", err)
+			}
+			if err := syscall.Unmount(packFSDst, 0); err != nil {
+				return fmt.Errorf("failed unmounting(pack) %q: %w", packFSTag, err)
+			}
+		}
+		///////////////////////////////////////////////////////////////////////
+
+		// WASI-related filesystems
+		for _, tag := range []string{rootFSTag} {
+			dst := filepath.Join("/mnt", tag)
+			if err := os.Mkdir(dst, 0777); err != nil {
+				return err
+			}
+			log.Printf("mounting %q to %q\n", tag, dst)
+			if err := syscall.Mount(tag, dst, "9p", 0, "trans=virtio,version=9p2000.L"); err != nil {
+				log.Printf("failed mounting %q: %v\n", tag, err)
+				break
+			}
+		}
+
+		infoD, err := os.ReadFile(filepath.Join("/mnt", packFSTag, "info"))
+		if err != nil {
+			return err
+		}
+		log.Printf("INFO:\n%s\n", string(infoD))
+		info = parseInfo(infoD)
 	}
 
 	if info.withNet {
