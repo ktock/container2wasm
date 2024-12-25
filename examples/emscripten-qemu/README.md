@@ -21,6 +21,13 @@ $ mkdir -p /tmp/out-js4/htdocs
 $ c2w --dockerfile=Dockerfile --assets=. --to-js --target-arch=aarch64 arm64v8/alpine:3.20 /tmp/out-js4/htdocs/
 ```
 
+### Converting RISC-V container to Wasm
+
+```
+$ mkdir -p /tmp/out-js4/htdocs
+$ c2w --dockerfile=Dockerfile --assets=. --target-arch=riscv64 --target-stage=js-qemu-riscv64 riscv64/alpine /tmp/out-js4/htdocs/
+```
+
 ## Step 2: Start a server
 
 Serve the image as the following (run them at the repository root dir):

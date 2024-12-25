@@ -36,7 +36,7 @@ ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
 ARG QEMU_REPO=https://github.com/ktock/qemu-wasm
-ARG QEMU_REPO_VERSION=3aa8817688956053e878bb18b2aeccc168439fbf
+ARG QEMU_REPO_VERSION=a64e60258db4176a358f8250d1a4680658b0f853
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.7.0
@@ -82,7 +82,7 @@ FROM ubuntu:22.04 AS qemu-repo-base
 ARG QEMU_REPO
 ARG QEMU_REPO_VERSION
 RUN apt-get update && apt-get install -y git
-RUN git clone ${QEMU_REPO} /qemu && \
+RUN git clone --depth 100 ${QEMU_REPO} /qemu && \
     cd /qemu && \
     git checkout ${QEMU_REPO_VERSION}
 FROM scratch AS qemu-repo
@@ -708,6 +708,23 @@ RUN mkdir -p build
 WORKDIR /qemu/build
 RUN npm i xterm-pty
 
+FROM linux-riscv64-dev-common AS linux-riscv64-config-dev-qemu
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets /config/qemu/linux_rv64_config ./.config
+RUN make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- olddefconfig
+
+FROM scratch AS linux-riscv64-config-qemu
+COPY --link --from=linux-riscv64-config-dev-qemu /work-buildlinux/linux/.config /
+
+FROM linux-riscv64-dev-common AS linux-riscv64-dev-qemu
+RUN apt-get install -y libelf-dev
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets ./config/qemu/linux_rv64_config ./.config
+RUN make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc) all && \
+    mkdir /out && \
+    mv /work-buildlinux/linux/arch/riscv/boot/Image /out/Image && \
+    make clean
+
 FROM golang-base AS get-qemu-state-dev
 COPY --link --from=assets / /work
 RUN mkdir /out/
@@ -740,6 +757,23 @@ ARG VM_CORE_NUMS
 ARG QEMU_CPR
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
 COPY --link --from=assets /config/qemu/args-aarch64.json.template /args.json.template
+RUN CPR_FLAGS= ; \
+    if test "${QEMU_CPR}" = "true"  ; then \
+      CPR_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
+    fi && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR=$CPR_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
+RUN echo "Module['arguments'] =" > /out/arg-module.js
+RUN cat /out/args.json >> /out/arg-module.js
+RUN echo ";" >> /out/arg-module.js
+
+FROM ubuntu:22.04 AS qemu-config-dev-riscv64
+ARG LINUX_LOGLEVEL
+ARG VM_MEMORY_SIZE_MB
+ARG VM_CORE_NUMS
+ARG QEMU_CPR
+RUN apt-get update && apt-get install -y gettext-base && mkdir /out
+COPY --link --from=assets /config/qemu/args-riscv64.json.template /args.json.template
 RUN CPR_FLAGS= ; \
     if test "${QEMU_CPR}" = "true"  ; then \
       CPR_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
@@ -796,6 +830,25 @@ RUN mkdir -p /tmp/wasi0 /tmp/wasi1
 WORKDIR /qemu/build/
 ARG QEMU_CPR
 RUN if test "${QEMU_CPR}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-aarch64 ; fi
+
+FROM qemu-native-dev AS qemu-riscv64-pack
+WORKDIR /qemu/build/
+RUN ../configure --static --target-list=riscv64-softmmu --cross-prefix= \
+    --without-default-features --enable-system --with-coroutine=ucontext --enable-virtfs --enable-attr
+RUN make -j $(nproc) qemu-system-riscv64
+
+RUN mkdir -p /pack/
+COPY --link --from=rootfs-riscv64-dev /out/rootfs.bin /pack/
+COPY --link --from=linux-riscv64-dev-qemu /out/Image /pack/
+RUN cp /qemu/pc-bios/opensbi-riscv64-generic-fw_dynamic.bin /pack/
+RUN cp /qemu/pc-bios/efi-virtio.rom /pack/
+
+COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
+COPY --link --from=qemu-config-dev-riscv64 /out/args-before-cp.json /
+RUN mkdir -p /tmp/wasi0 /tmp/wasi1
+WORKDIR /qemu/build/
+ARG QEMU_CPR
+RUN if test "${QEMU_CPR}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-riscv64 ; fi
 
 FROM qemu-emscripten-dev AS qemu-emscripten-dev-amd64
 ARG LOAD_MODE
@@ -865,6 +918,38 @@ FROM js-qemu-aarch64-base AS js-qemu-aarch64-separated
 COPY --link --from=qemu-emscripten-dev-aarch64 /load /
 
 FROM js-qemu-aarch64-$LOAD_MODE AS js-aarch64
+
+FROM qemu-emscripten-dev AS qemu-emscripten-dev-riscv64
+ARG LOAD_MODE
+RUN EXTRA_CFLAGS="-O3 -g -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=2300MB -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/qemu/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js" ; \
+    emconfigure ../configure --static --target-list=riscv64-softmmu --cpu=wasm32 --cross-prefix= \
+    --without-default-features --enable-system --with-coroutine=fiber --enable-virtfs \
+    --extra-cflags="$EXTRA_CFLAGS" --extra-cxxflags="$EXTRA_CFLAGS" --extra-ldflags="-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY,FS" && \
+    emmake make -j $(nproc) qemu-system-riscv64
+COPY --from=qemu-riscv64-pack /pack /pack
+RUN if test "${LOAD_MODE}" = "single" ; then \
+      /emsdk/upstream/emscripten/tools/file_packager.py qemu-system-riscv64.data --preload /pack > load.js ; \
+    else \
+      mkdir /load && \
+      mkdir /image && cp /pack/Image /image/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/image.data --preload /image > /load/image-load.js && \
+      mkdir /rootfs && cp /pack/rootfs.bin /rootfs/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/rootfs.data --preload /rootfs > /load/rootfs-load.js && \
+      mkdir /bios && cp /pack/opensbi-riscv64-generic-fw_dynamic.bin /bios/ && /emsdk/upstream/emscripten/tools/file_packager.py /load/bios.data --preload /bios > /load/bios-load.js ; \
+    fi
+
+FROM scratch AS js-qemu-riscv64-base
+COPY --link --from=qemu-emscripten-dev-riscv64 /qemu/build/qemu-system-riscv64 /out.js
+COPY --link --from=qemu-emscripten-dev-riscv64 /qemu/build/qemu-system-riscv64.wasm /
+COPY --link --from=qemu-emscripten-dev-riscv64 /qemu/build/qemu-system-riscv64.worker.js /
+COPY --link --from=qemu-config-dev-riscv64 /out/arg-module.js /
+
+FROM js-qemu-riscv64-base AS js-qemu-riscv64-single
+COPY --link --from=qemu-emscripten-dev-riscv64 /qemu/build/qemu-system-riscv64.data /
+COPY --link --from=qemu-emscripten-dev-riscv64 /qemu/build/load.js /
+
+FROM js-qemu-riscv64-base AS js-qemu-riscv64-separated
+COPY --link --from=qemu-emscripten-dev-riscv64 /load /
+
+FROM js-qemu-riscv64-${LOAD_MODE} AS js-qemu-riscv64
 
 FROM rust:1.74.1-buster AS bochs-dev-common
 ARG WASI_VFS_VERSION
