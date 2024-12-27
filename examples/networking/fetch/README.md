@@ -2,8 +2,6 @@
 
 This is an example of running a container on browser with networking support.
 
-Please refer to [`../../wasi-browser`](../../wasi-browser/) for the basics of WASI-on-browser.
-
 This example runs the container with network stack running on browser.
 The entire network stack runs on browser so this doesn't require network stack daemon outside of browser.
 
@@ -33,7 +31,6 @@ In [our example JS wrapper for container](../../wasi-browser/), by defualt, the 
 - The proxy supports only HTTP/HTTPS and the implementation isn't mature. So it's possible that some HTTP networking fails on some cases. We'll work on support for more features.
 - The proxy and containers don't have the control over [Forbidden headers](https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name) that are controlled by the browser.
 - Only chrome is our tested browser. The set of accesible sites might be different among browsers and the configurations.
-- WASI-on-browser container is only supported. Emscripten support is the future work.
 
 ## Example1: curl
 
@@ -135,3 +132,8 @@ The proxy's certificate needs to be trusted by nix using `export NIX_SSL_CERT_FI
 The example installs and runs `hello` package in the container (`nix-env -iA nixpkgs.hello`).
 
 > It might takes several minutes to complete `nix-env`.
+
+## Example3: emscripten
+
+`c2w-net-proxy` can also be used with on-browser emulator compiled with emscripten.
+[`../../emscripten-qemu/`](../../emscripten-qemu/) contains a demo of running container on browser leveraging QEMU compiled with emscripten, with enabling NW.

@@ -97,3 +97,5 @@ The parameter `net=delegate` tells the [container's Javascript wrapper](../../wa
 This example installs and runs `figlet` command in the container (`apk update && apk add figlet`).
 
 > It might takes several minutes to complete `apk add`.
+
+> NOTE: See also [`../../emscripten-qemu/`](../../emscripten-qemu/) that contains demos of running container on browser leveraging QEMU compiled with emscripten, with enabling NW.

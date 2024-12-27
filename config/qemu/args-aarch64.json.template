@@ -3,10 +3,11 @@
     "-cpu", "cortex-a53", "-machine", "virt",
     "-bios", "/pack/edk2-aarch64-code.fd",
     "-nographic", "-m", "${MEMORY_SIZE}M", "-accel", "tcg,tb-size=500,thread=multi", "-smp", "${CORE_NUMS},sockets=${CORE_NUMS}",
-    "-nic", "none",
+    "-L", "/pack/",
     "-drive", "if=virtio,format=raw,file=/pack/rootfs.bin",
     "-kernel", "/pack/bzImage",
     "-append", "earlyprintk=ttyS0 console=ttyS0 root=/dev/vda rootwait no_console_suspend ro loglevel=${LOGLEVEL} QEMU_MODE=1 init=/sbin/tini -- /sbin/init",
     "-virtfs", "local,path=${WASI0_PATH},mount_tag=wasi0,security_model=passthrough,id=wasi0",
-    "-virtfs", "local,path=${WASI1_PATH},mount_tag=wasi1,security_model=passthrough,id=wasi1"
+    "-virtfs", "local,path=${WASI1_PATH},mount_tag=wasi1,security_model=passthrough,id=wasi1",
+    "-netdev", "socket,id=vmnic,connect=localhost:8888", "-device", "virtio-net-pci,netdev=vmnic"
 ]
