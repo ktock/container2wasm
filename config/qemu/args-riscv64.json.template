@@ -1,0 +1,12 @@
+[
+    ${CPR}
+    "-nographic", "-m", "${MEMORY_SIZE}M", "-accel", "tcg,tb-size=500,thread=multi", "-smp", "${CORE_NUMS},sockets=${CORE_NUMS}",
+    "-machine", "virt",
+    "-L", "/pack/",
+    "-drive", "if=virtio,format=raw,file=/pack/rootfs.bin",
+    "-kernel", "/pack/Image",
+    "-append", "earlyprintk=ttyS0 console=ttyS0 root=/dev/vda rootwait ro quiet virtio_net.napi_tx=false loglevel=${LOGLEVEL} QEMU_MODE=1 init=/sbin/tini -- /sbin/init",
+    "-virtfs", "local,path=${WASI0_PATH},mount_tag=wasi0,security_model=passthrough,id=wasi0",
+    "-virtfs", "local,path=${WASI1_PATH},mount_tag=wasi1,security_model=passthrough,id=wasi1",
+    "-netdev", "socket,id=vmnic,connect=localhost:8888", "-device", "virtio-net-pci,netdev=vmnic"
+]
