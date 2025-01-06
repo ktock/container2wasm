@@ -213,8 +213,12 @@ func build(builderPath string, srcImgPath string, destDir, destFile string, clic
 	if clicontext.Bool("to-js") {
 		buildxArgs = append(buildxArgs,
 			"--target=js",
-			"--build-arg", "OPTIMIZATION_MODE=native",
 		)
+		if clicontext.String("target-arch") == "aarch64" {
+			buildxArgs = append(buildxArgs,
+				"--build-arg", "NO_BINFMT=true",
+			)
+		}
 	} else if ts := clicontext.String("target-stage"); ts != "" {
 		buildxArgs = append(buildxArgs,
 			"--target="+ts,
@@ -273,8 +277,12 @@ func buildWithLegacyBuilder(builderPath string, srcImgPath, destDir, destFile st
 	if clicontext.Bool("to-js") {
 		buildArgs = append(buildArgs,
 			"--target=js",
-			"--build-arg", "OPTIMIZATION_MODE=native",
 		)
+		if clicontext.String("target-arch") == "aarch64" {
+			buildArgs = append(buildArgs,
+				"--build-arg", "NO_BINFMT=true",
+			)
+		}
 	} else if ts := clicontext.String("target-stage"); ts != "" {
 		buildArgs = append(buildArgs,
 			"--target="+ts,
