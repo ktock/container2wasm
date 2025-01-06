@@ -1,5 +1,5 @@
 [
-    ${CPR}
+    ${MIGRATION}
     "-nographic", "-m", "${MEMORY_SIZE}M", "-accel", "tcg,tb-size=500,thread=multi", "-smp", "${CORE_NUMS},sockets=${CORE_NUMS}",
     "-machine", "virt",
     "-L", "/pack/",

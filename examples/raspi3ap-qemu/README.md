@@ -4,8 +4,7 @@ c2w experimentally integrates QEMU TCG on Wasm(emscripten), using [QEMU Wasm](ht
 QEMU supports emulating a variety of borads including Rasberry Pi boards.
 This document shows an example of Raspberry Pi (`raspi3ap`) emulated on browser
 
-> NOTE1: Example of AArch64 container with QEMU TCG is available at [./../emscripten-aarch64](./../emscripten-aarch64)
-> NOTE2: Example of x86_64 container with QEMU TCG is available at [./../emscripten-qemu](./../emscripten-qemu)
+> NOTE: Example of running containers with QEMU is available at [./../emscripten](./../emscripten).
 
 This example runs busybox on the emulated board.
 
