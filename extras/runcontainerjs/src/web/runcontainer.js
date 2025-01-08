@@ -1,9 +1,283 @@
-export async function createContainer(vmImage, imageAddr, stackWorkerPath, mounterWasmURL) {
+import { ws } from 'msw'
+import { setupWorker } from "msw/browser";
+
+export async function createContainerWASI(vmImage, imageAddr, stackWorkerPath, mounterWasmURL) {
     let stackWorker = new Worker(stackWorkerPath);
-    return {vmImage: vmImage, net: createStack(stackWorker, imageAddr, mounterWasmURL)};
+    let cert = null;
+    let net = null;
+    await new Promise((resolve) => {
+        net = createStack(stackWorker, imageAddr, mounterWasmURL, (c) => { cert = c; resolve(); });
+    });
+    return {vmImage: vmImage, net: net, cert: cert};
 }
 
-function createStack(stackWorker, imageAddr, mounterWasmURL) {
+var accepted = false;
+let curSocket = null;
+let eventQueue = [];
+
+export async function createContainerQEMUWasm(vmImage, imageAddr, stackWorkerPath, mounterWasmURL, Module) {
+    try {
+        window.Module = Module;
+        const { default: initEmscriptenModule } = await import(/* webpackIgnore: true */`${vmImage}/out.js`);
+        await import(/* webpackIgnore: true */`${vmImage}/arg-module.js`);
+        
+        const stackAddress = 'http://localhost:9999/'; // listened and served by MSW inside browser
+        Module['mainScriptUrlOrBlob'] = vmImage + "/out.js";
+        Module['websocket'] = {
+            'url': stackAddress
+        };
+        Module['locateFile'] = (f) => {
+            return vmImage + "/" + f;
+        }
+
+        await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = vmImage + "/load.js";
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`failed to load assets`));
+            document.head.appendChild(script);
+        });
+
+        await new Promise((resolve) => {
+            startQEMUWasm(stackAddress, stackWorkerPath, mounterWasmURL, imageAddr, (cert) => {
+                Module['preRun'].push((mod) => {
+                    mod.FS.mkdir('/.wasmenv');
+                    mod.FS.writeFile('/.wasmenv/proxy.crt', cert);
+                });
+                resolve();
+            });
+        });
+        let info = "t:" + Math.round(new Date() / 1000) + "\n";
+        info += 'n:' + genmac() + '\n';
+        info += `m: .wasmenv
+env: SSL_CERT_FILE=/.wasmenv/proxy.crt
+env: https_proxy=http://192.168.127.253:80
+env: http_proxy=http://192.168.127.253:80
+env: HTTPS_PROXY=http://192.168.127.253:80
+env: HTTP_PROXY=http://192.168.127.253:80\n`;
+        if (imageAddr != "") {
+            info += 'b: 9p=192.168.127.252\n';
+        }
+        Module['preRun'].push((mod) => {
+            mod.FS.mkdir('/pack');
+            mod.FS.writeFile('/pack/info', info);
+        });
+        await initEmscriptenModule(Module);
+        return Module;
+    } catch (error) {
+        console.error('Error loading modules:', error);
+    }
+}
+
+function genmac(){
+    return "02:XX:XX:XX:XX:XX".replace(/X/g, function() {
+        return "0123456789ABCDEF".charAt(Math.floor(Math.random() * 16))
+    });
+}
+
+function startQEMUWasm(address, stackWorkerFile, mounterWasmURL, imageAddr, readyCallback) {
+    const mockServer = ws.link(address);
+
+    const handlers = [
+        mockServer.addEventListener('connection', ({ client }) => {
+            if (curSocket != null) {
+                // should fail
+                console.log("duplicated");
+                return;
+            }
+            curSocket = client;
+            sockAccept();
+            client.addEventListener('message', (event) => {
+                if (!accepted) {
+                    return;
+                }
+                eventQueue.push(new Uint8Array(event.data));
+                sockSend(); // pass data from qemu to c2w-net-proxy.wasm
+            })
+        }),
+    ]
+
+    const worker = setupWorker(...handlers);
+    worker.start()
+
+    let stackWorker = new Worker(stackWorkerFile);
+
+    let conn = createStack(stackWorker, imageAddr, mounterWasmURL, readyCallback);
+    registerConnBuffer(conn.toNet, conn.fromNet);
+    registerMetaBuffer(conn.metaFromNet);
+}
+
+var toNetCtrl;
+var toNetBegin;
+var toNetEnd;
+var toNetNotify;
+var toNetData;
+var fromNetCtrl;
+var fromNetBegin;
+var fromNetEnd;
+var fromNetData;
+function registerConnBuffer(to, from) {
+    toNetCtrl = new Int32Array(to, 0, 1);
+    toNetBegin = new Int32Array(to, 4, 1);
+    toNetEnd = new Int32Array(to, 8, 1);
+    toNetNotify = new Int32Array(to, 12, 1);
+    toNetData = new Uint8Array(to, 16);
+    fromNetCtrl = new Int32Array(from, 0, 1);
+    fromNetBegin = new Int32Array(from, 4, 1);
+    fromNetEnd = new Int32Array(from, 8, 1);
+    fromNetData = new Uint8Array(from, 12);
+}
+
+var metaFromNetCtrl;
+var metaFromNetBegin;
+var metaFromNetEnd;
+var metaFromNetStatus;
+var metaFromNetData;
+function registerMetaBuffer(meta) {
+    metaFromNetCtrl = new Int32Array(meta, 0, 1);
+    metaFromNetBegin = new Int32Array(meta, 4, 1);
+    metaFromNetEnd = new Int32Array(meta, 8, 1);
+    metaFromNetStatus = new Int32Array(meta, 12, 1);
+    metaFromNetData = new Uint8Array(meta, 16);
+}
+
+function sockAccept(){
+    accepted = true;
+    return true;
+}
+
+function sockSend(){
+    if (Atomics.compareExchange(toNetCtrl, 0, 0, 1) != 0) {
+        setTimeout(() => {
+            sockSend();
+        }, 0);
+        return;
+    }
+    const data = eventQueue.shift();
+    let begin = toNetBegin[0]; //inclusive
+    let end = toNetEnd[0]; //exclusive
+    var len;
+    var round;
+    if (end >= begin) {
+        len = toNetData.byteLength - end;
+        round = begin;
+    } else {
+        len = begin - end;
+        round = 0;
+    }
+    if ((len + round) < data.length) {
+        // buffer is full; drop packets
+        // TODO: preserve this
+        console.log("FIXME: buffer full; dropping packets");
+    } else {
+        if (len > 0) {
+            if (len > data.length) {
+                len = data.length
+            }
+            toNetData.set(data.subarray(0, len), end);
+            toNetEnd[0] = end + len;
+        }
+        if ((round > 0) && (data.length > len)) {
+            if (round > data.length - len) {
+                round = data.length - len
+            }
+            toNetData.set(data.subarray(len, len + round), 0);
+            toNetEnd[0] = round;
+        }
+    }
+    if (Atomics.compareExchange(toNetCtrl, 0, 1, 0) != 1) {
+        console.log("UNEXPECTED STATUS");
+    }
+    Atomics.notify(toNetCtrl, 0, 1);
+
+    Atomics.store(toNetNotify, 0, 1);
+    Atomics.notify(toNetNotify, 0);
+    return 0;
+}
+
+function sockRecvWS(targetLen){
+    if (!accepted) {
+        return -1;
+    }
+
+    if (Atomics.compareExchange(fromNetCtrl, 0, 0, 1) != 0) {
+        sockRecvWS(targetLen);
+        return;
+    }
+    let begin = fromNetBegin[0]; //inclusive
+    let end = fromNetEnd[0]; //exclusive
+    var len;
+    var round;
+    if (end >= begin) {
+        len = end - begin;
+        round = 0;
+    } else {
+        len = fromNetData.byteLength - begin;
+        round = end;
+    }
+    if (targetLen < len) {
+        len = targetLen;
+        round = 0;
+    } else if (targetLen < len + round) {
+        round = targetLen - len;
+    }
+    let targetBuf = new Uint8Array(len + round);
+    if (len > 0) {
+        targetBuf.set(fromNetData.subarray(begin, begin + len), 0);
+        fromNetBegin[0] = begin + len;
+    }
+    if (round > 0) {
+        targetBuf.set(fromNetData.subarray(0, round), len);
+        fromNetBegin[0] = round;
+    }
+
+    curSocket.send(targetBuf);
+    
+    if (Atomics.compareExchange(fromNetCtrl, 0, 1, 0) != 1) {
+        console.log("UNEXPECTED STATUS");
+    }
+    Atomics.notify(fromNetCtrl, 0, 1);
+
+    return (len + round);
+}
+
+export function RecvCert(){
+    var buf = new Uint8Array(0);
+    return new Promise((resolve, reject) => {
+        function getCert(){
+            var done = false;
+            for(;;) {
+                if (Atomics.compareExchange(metaFromNetCtrl, 0, 0, 1) == 0) {
+                    break;
+                }
+                Atomics.wait(metaFromNetCtrl, 0, 1);
+            }
+            let end = metaFromNetEnd[0]; //exclusive
+            if (end > 0) {
+                buf = appendData(buf, metaFromNetData.slice(0, end));
+                metaFromNetEnd[0] = 0;
+            }
+            if (metaFromNetStatus[0] == 1) {
+                done = true;
+            }
+            if (Atomics.compareExchange(metaFromNetCtrl, 0, 1, 0) != 1) {
+                console.log("UNEXPECTED STATUS");
+            }
+            Atomics.notify(metaFromNetCtrl, 0, 1);
+
+            if (done) {
+                resolve(buf); // EOF
+            } else {
+                setTimeout(getCert, 0);
+                return;
+            }
+        }
+        getCert();
+    });
+}
+
+function createStack(stackWorker, imageAddr, mounterWasmURL, readyCallback) {
     var proxyShared = new SharedArrayBuffer(12 + 1024 * 1024);
 
     var toShared = new SharedArrayBuffer(1024 * 1024);
@@ -36,7 +310,11 @@ function createStack(stackWorker, imageAddr, mounterWasmURL) {
     metaFromNetEnd[0] = 0;
     metaFromNetStatus[0] = 0;
 
-    stackWorker.onmessage = connect("proxy", proxyShared, toShared);
+    var certbuf = {
+        buf: new Uint8Array(0),
+        readyCallback: readyCallback
+    }
+    stackWorker.onmessage = connect("proxy", proxyShared, toShared, certbuf);
     stackWorker.postMessage({type: "init", buf: proxyShared, toBuf: toShared, fromBuf: fromShared, imageAddr: imageAddr, mounterWasmURL: mounterWasmURL, metaFromBuf: metaFromShared});
     return {
         toNet: toShared,
@@ -45,7 +323,7 @@ function createStack(stackWorker, imageAddr, mounterWasmURL) {
     };
 }
 
-function connect(name, shared, toNet) {
+function connect(name, shared, toNet, certbuf) {
     var streamCtrl = new Int32Array(shared, 0, 1);
     var streamStatus = new Int32Array(shared, 4, 1);
     var streamLen = new Int32Array(shared, 8, 1);
@@ -167,6 +445,9 @@ function connect(name, shared, toNet) {
                             Atomics.notify(toNetNotify, 0);
                         }
                     }
+                    break;
+                case "notify-send-from-net":
+                    sockRecvWS(req_.len);
                     break;
                 case "http_send":
                     var reqObj = JSON.parse(new TextDecoder().decode(req_.req));
@@ -316,6 +597,13 @@ function connect(name, shared, toNet) {
                         streamStatus[0] = 1;
                         delete httpConnections[req_.id]; // connection done
                     }
+                    break;
+                case "send_cert":
+                    certbuf.buf = appendData(certbuf.buf, req_.buf);
+                    if (certbuf.readyCallback != null) {
+                        certbuf.readyCallback(certbuf.buf);
+                    }
+                    streamStatus[0] = 0;
                     break;
                 case "layer_request":
                     var reqObj = {

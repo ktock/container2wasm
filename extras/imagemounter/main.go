@@ -440,15 +440,19 @@ func main() {
 		logrus.SetLevel(logrus.FatalLevel)
 	}
 
-	if imageAddr == "" {
-		panic("specify image to mount")
-	}
-	imageserver, waitInit, err := NewImageServer(context.TODO(), imageAddr, imagespec.Platform{
-		Architecture: arch,
-		OS:           "linux",
-	})
-	if err != nil {
-		panic(err)
+	var (
+		imageServer *p9.Server
+		waitImageServerInit func()
+		err error
+	)
+	if imageAddr != "" {
+		imageServer, waitImageServerInit, err = NewImageServer(context.TODO(), imageAddr, imagespec.Platform{
+			Architecture: arch,
+			OS:           "linux",
+		})
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	ser, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 60))
@@ -558,19 +562,21 @@ func main() {
 		log.Println("serving proxy with https")
 		log.Fatal(server.ServeTLS(l, "", ""))
 	}()
-	go func() {
-		l, err := vn.Listen("tcp", p9IP+":80")
-		if err != nil {
-			panic(err)
-		}
-		if err != nil {
-			panic(err)
-		}
-		if waitInit != nil {
-			waitInit()
-		}
-		log.Fatal(imageserver.Serve(l))
-	}()
+	if imageAddr != "" {
+		go func() {
+			l, err := vn.Listen("tcp", p9IP+":80")
+			if err != nil {
+				panic(err)
+			}
+			if err != nil {
+				panic(err)
+			}
+			if waitImageServerInit != nil {
+				waitImageServerInit()
+			}
+			log.Fatal(imageServer.Serve(l))
+		}()
+	}
 	ql, err := findListener(listenFd)
 	if err != nil {
 		panic(err)
