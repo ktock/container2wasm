@@ -26,7 +26,7 @@
       const mounterImage = location.origin + "/imagemounter.wasm.gzip";
       const stackWorkerFile = location.origin + "/dist/stack-worker.js";
       const containerImageAddress = getImageParam();
-      const infoP = RunContainer.createContainer(vmImage, containerImageAddress, stackWorkerFile, mounterImage);
+      const infoP = RunContainer.createContainerWASI(vmImage, containerImageAddress, stackWorkerFile, mounterImage);
       infoP.then((info) => {
           worker.postMessage({type: "init", info: info, args: ['/bin/bash']});
           new TtyServer(slave).start(worker);

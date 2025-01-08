@@ -158,73 +158,6 @@ function wasiHack(wasi, certfd, connfd) {
 
 function envHack(wasi){
     return {
-        decompress_init: function(idP) {
-            if (idP < 0) {
-                idP = idP >>> 0;
-            }
-            var buffer = new DataView(wasi.inst.exports.memory.buffer);
-            var buffer8 = new Uint8Array(wasi.inst.exports.memory.buffer);
-
-            streamCtrl[0] = 0;
-            postMessage({
-                type: "decompress_init",
-            });
-            Atomics.wait(streamCtrl, 0, 0);
-            if (streamStatus[0] < 0) {
-                return ERRNO_INVAL;
-            }
-            var id = streamStatus[0];
-            buffer.setUint32(idP, id, true);
-            return 0;
-        },
-        decompress_write: function(id, bufP, buflen, isEOF) {
-            if (bufP < 0) {
-                bufP = bufP >>> 0;
-            }
-            var buf = new Uint8Array(wasi.inst.exports.memory.buffer, bufP, buflen);
-            streamCtrl[0] = 0;
-            postMessage({
-                type: "decompress_write",
-                id: id,
-                chunk: buf.slice(0, buf.length),
-                isEOF: isEOF,
-            });
-            Atomics.wait(streamCtrl, 0, 0);
-            if (streamStatus[0] < 0) {
-                return ERRNO_INVAL;
-            }
-            return 0;
-        },
-        decompress_read: function(id, bufP, buflen, recvLenP, isEOFP) {
-            if (bufP < 0) {
-                bufP = bufP >>> 0;
-            }
-            if (recvLenP < 0) {
-                recvLenP = recvLenP >>> 0;
-            }
-            if (isEOFP < 0) {
-                isEOFP = isEOFP >>> 0;
-            }
-            var buffer = new DataView(wasi.inst.exports.memory.buffer);
-            var buffer8 = new Uint8Array(wasi.inst.exports.memory.buffer);
-
-            streamCtrl[0] = 0;
-            postMessage({type: "decompress_read", id: id, len: buflen});
-            Atomics.wait(streamCtrl, 0, 0);
-            if (streamStatus[0] < 0) {
-                return ERRNO_INVAL;
-            }
-            var ddlen = streamLen[0];
-            var res = streamData.subarray(0, ddlen);
-            buffer8.set(res, bufP);
-            buffer.setUint32(recvLenP, ddlen, true);
-            if (streamStatus[0] == 1) {
-                buffer.setUint32(isEOFP, 1, true);
-            } else {
-                buffer.setUint32(isEOFP, 0, true);
-            }
-            return 0;
-        },
         http_send: function(addressP, addresslen, reqP, reqlen, idP){
             var buffer = new DataView(wasi.inst.exports.memory.buffer);
             var address = new Uint8Array(wasi.inst.exports.memory.buffer, addressP, addresslen);
@@ -310,6 +243,73 @@ function envHack(wasi){
             var body = streamData.subarray(0, ddlen);
             buffer8.set(body, bodyP);
             buffer.setUint32(bodysizeP, ddlen, true);
+            if (streamStatus[0] == 1) {
+                buffer.setUint32(isEOFP, 1, true);
+            } else {
+                buffer.setUint32(isEOFP, 0, true);
+            }
+            return 0;
+        },
+        decompress_init: function(idP) {
+            if (idP < 0) {
+                idP = idP >>> 0;
+            }
+            var buffer = new DataView(wasi.inst.exports.memory.buffer);
+            var buffer8 = new Uint8Array(wasi.inst.exports.memory.buffer);
+
+            streamCtrl[0] = 0;
+            postMessage({
+                type: "decompress_init",
+            });
+            Atomics.wait(streamCtrl, 0, 0);
+            if (streamStatus[0] < 0) {
+                return ERRNO_INVAL;
+            }
+            var id = streamStatus[0];
+            buffer.setUint32(idP, id, true);
+            return 0;
+        },
+        decompress_write: function(id, bufP, buflen, isEOF) {
+            if (bufP < 0) {
+                bufP = bufP >>> 0;
+            }
+            var buf = new Uint8Array(wasi.inst.exports.memory.buffer, bufP, buflen);
+            streamCtrl[0] = 0;
+            postMessage({
+                type: "decompress_write",
+                id: id,
+                chunk: buf.slice(0, buf.length),
+                isEOF: isEOF,
+            });
+            Atomics.wait(streamCtrl, 0, 0);
+            if (streamStatus[0] < 0) {
+                return ERRNO_INVAL;
+            }
+            return 0;
+        },
+        decompress_read: function(id, bufP, buflen, recvLenP, isEOFP) {
+            if (bufP < 0) {
+                bufP = bufP >>> 0;
+            }
+            if (recvLenP < 0) {
+                recvLenP = recvLenP >>> 0;
+            }
+            if (isEOFP < 0) {
+                isEOFP = isEOFP >>> 0;
+            }
+            var buffer = new DataView(wasi.inst.exports.memory.buffer);
+            var buffer8 = new Uint8Array(wasi.inst.exports.memory.buffer);
+
+            streamCtrl[0] = 0;
+            postMessage({type: "decompress_read", id: id, len: buflen});
+            Atomics.wait(streamCtrl, 0, 0);
+            if (streamStatus[0] < 0) {
+                return ERRNO_INVAL;
+            }
+            var ddlen = streamLen[0];
+            var res = streamData.subarray(0, ddlen);
+            buffer8.set(res, bufP);
+            buffer.setUint32(recvLenP, ddlen, true);
             if (streamStatus[0] == 1) {
                 buffer.setUint32(isEOFP, 1, true);
             } else {
@@ -436,8 +436,8 @@ function serveIfInitMsg(msg) {
                 registerMetaBuffer(req_.metaFromBuf);
             }
             return {
-                imageAddr: req_.imageAddr,
-                mounterWasmURL: req_.mounterWasmURL
+                mounterWasmURL: req_.mounterWasmURL,
+                imageAddr: req_.imageAddr
             };
         }
     }
@@ -501,6 +501,12 @@ function sockSend(data){
         console.log("UNEXPECTED STATUS");
     }
     Atomics.notify(fromNetCtrl, 0, 1);
+
+    // notify data is sent from stack
+    streamCtrl[0] = 0;
+    postMessage({type: "notify-send-from-net", len: data.length});
+    Atomics.wait(streamCtrl, 0, 0);
+
     return 0;
 }
 
@@ -605,38 +611,12 @@ function sockWaitForReadable(timeout){
 }
 
 function sendCert(data){
-    var curOff = 0;
-    var done = false;
-    for(;;) {
-        for(;;) {
-            if (Atomics.compareExchange(metaFromNetCtrl, 0, 0, 1) == 0) {
-                break;
-            }
-            Atomics.wait(metaFromNetCtrl, 0, 1);
-        }
-        let end = metaFromNetEnd[0]; //exclusive
-        if (end == 0) {
-            var len = metaFromNetData.length;
-            var remain = data.byteLength - curOff;
-            if (remain == 0) {
-                metaFromNetStatus[0] = 1; // done
-                done = true;
-            } else {
-                if (remain < len) {
-                    len = remain;
-                }
-                metaFromNetData.set(data.subarray(curOff, len), 0);
-                metaFromNetEnd[0] = len;
-                curOff += len;
-            }
-        }
-        if (Atomics.compareExchange(metaFromNetCtrl, 0, 1, 0) != 1) {
-            console.log("UNEXPECTED STATUS");
-        }
-        Atomics.notify(metaFromNetCtrl, 0, 1);
-        if (done) {
-            break;
-        }
+    streamCtrl[0] = 0;
+    postMessage({type: "send_cert", buf: data});
+    Atomics.wait(streamCtrl, 0, 0);
+    if (streamStatus[0] < 0) {
+        errStatus.val = streamStatus[0]
+        return errStatus;
     }
 }
 

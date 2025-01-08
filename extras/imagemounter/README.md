@@ -46,7 +46,7 @@ The following pulls `ubuntu:22.04` stored at https://ktock.github.io/ubuntu-oci-
 ```console
 $ cd ./extras/imagemounter
 $ mkdir -p /tmp/out-js3/
-$ cp -R ./../../examples/no-conversion/* /tmp/out-js3/
+$ cp -R ./../../examples/no-conversion-wasi-browser/* /tmp/out-js3/
 $ ( cd ../runcontainerjs && npx webpack && cp -R ./dist /tmp/out-js3/htdocs/ )
 $ cat ../../out/imagemounter.wasm | gzip >  /tmp/out-js3/htdocs/imagemounter.wasm.gzip
 $ cat /tmp/outx/out.wasm | gzip >  /tmp/out-js3/htdocs/out.wasm.gzip
@@ -93,7 +93,7 @@ When you access to `localhost:8083?image=localhost:5000/ubuntu:22.04`, that page
 ```console
 $ cd ./extras/imagemounter
 $ mkdir -p /tmp/out-js3/
-$ cp -R ./../../examples/no-conversion/* /tmp/out-js3/
+$ cp -R ./../../examples/no-conversion-wasi-browser/* /tmp/out-js3/
 $ ( cd ../runcontainerjs && npx webpack && cp -R ./dist /tmp/out-js3/htdocs/ )
 $ cat ../../out/imagemounter.wasm | gzip >  /tmp/out-js3/htdocs/imagemounter.wasm.gzip
 $ cat /tmp/outx/out.wasm | gzip >  /tmp/out-js3/htdocs/out.wasm.gzip
@@ -191,7 +191,7 @@ That image can run on browser via `http://localhost:8084/?image=http://localhost
 
 ```console
 $ mkdir -p /tmp/out-js4/
-$ cp -R ./examples/no-conversion/* /tmp/out-js4/
+$ cp -R ./examples/no-conversion-wasi-browser/* /tmp/out-js4/
 $ cp -R /tmp/gcc-13.2-org /tmp/out-js4/htdocs/
 $ cp -R /tmp/gcc-13.2-esgz /tmp/out-js4/htdocs/
 $ make imagemounter.wasm && cat ./out/imagemounter.wasm | gzip >  /tmp/out-js4/htdocs/imagemounter.wasm.gzip

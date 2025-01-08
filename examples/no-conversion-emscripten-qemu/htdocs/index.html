@@ -1,0 +1,51 @@
+<html>
+  <head>
+    <title>container + WASI on browser</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.17.0/css/xterm.css">
+  </head>
+  <body>
+    <div id="terminal"></div>
+    <script src="./dist/runcontainer.js"></script>
+    <script type="module">
+      import 'https://unpkg.com/xterm@5.3.0/lib/xterm.js';
+      import 'https://unpkg.com/xterm-pty/index.js';
+
+      const xterm = new Terminal();
+      xterm.open(document.getElementById("terminal"));
+
+      const { master, slave } = openpty();
+
+      xterm.loadAddon(master);
+
+      let Module = {};
+      Module.pty = slave;
+
+      const vmImage = location.origin + "/img";
+      const mounterImage = location.origin + "/imagemounter.wasm.gzip";
+      const stackWorkerFile = location.origin + "/dist/stack-worker.js";
+      const containerImageAddress = getImageParam();
+      const moduleP = RunContainer.createContainerQEMUWasm(vmImage, containerImageAddress, stackWorkerFile, mounterImage, Module);
+      moduleP.then((Module) => {
+          Module.pty = slave;
+          var oldPoll = Module['TTY'].stream_ops.poll;
+          var pty = Module['pty'];
+          Module['TTY'].stream_ops.poll = function(stream, timeout){
+              if (!pty.readable) {
+                  return (pty.readable ? 1 : 0) | (pty.writable ? 4 : 0);
+              }
+              return oldPoll.call(stream, timeout);
+          }
+      })
+      function getImageParam() {
+          var vars = location.search.substring(1).split('&');
+          for (var i = 0; i < vars.length; i++) {
+              var kv = vars[i].split('=');
+              if (decodeURIComponent(kv[0]) == 'image') {
+                  return kv[1];
+              }
+          }
+          return null;
+      }
+    </script>
+  </body>
+</html>
