@@ -4,7 +4,9 @@ This is an example to run a container on browser without pre-conversion of the c
 
 [`imagemounter`](./extras/imagemounter/) helper enables to directly mount a container image into the emulated Linux VM on Wasm, without container-to-wasm pre-conversion.
 
-> Also refer to [`../no-conversion-emscripten-qemu/`](../no-conversion-emscripten-qemu/) for QEMU-inside-browser approach.
+> NOTE: Refer to [`../../examples/wasi-browser/`](../../examples/wasi-browser/) for the basics of WASI-on-browser approach.
+
+> NOTE: Refer to [`../no-conversion-emscripten/`](../no-conversion-emscripten/) for emscripten (`--to-js` flag) approach.
 
 ## Example
 
