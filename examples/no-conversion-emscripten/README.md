@@ -5,6 +5,8 @@ This example uses `--to-js` flag which enables [QEMU Wasm](https://github.com/kt
 
 [`imagemounter`](./extras/imagemounter/) helper enables to directly mount a container image into the emulated Linux VM on Wasm, without container-to-wasm pre-conversion.
 
+> Refer to [`../../examples/emscripten/`](../../examples/emscripten/) for the basics about `--to-js` flag.
+
 ## Example
 
 > Run this at the project repo root directory.
@@ -13,7 +15,7 @@ The following outputs images that contains runc + Linux + CPU emulator, etc. but
 
 ```console
 $ mkdir /tmp/outimg
-$ c2w --dockerfile=Dockerfile --assets=. --external-bundle --target-stage=js-qemu-amd64 /tmp/outimg/
+$ c2w --external-bundle --to-js /tmp/outimg/
 ```
 
 Then, put a container image to the server in the standard [OCI Image Layout](https://github.com/opencontainers/image-spec/blob/v1.0.2/image-layout.md).
@@ -32,7 +34,7 @@ That image can run on browser via `http://localhost:8083/?image=http://localhost
 
 ```console
 $ mkdir -p /tmp/out-js3/
-$ cp -R ./examples/no-conversion-emscripten-qemu/* /tmp/out-js3/
+$ cp -R ./examples/no-conversion-emscripten/* /tmp/out-js3/
 $ cp -R /tmp/imageout /tmp/out-js3/htdocs/ubuntu-22.04
 $ make imagemounter.wasm && cat ./out/imagemounter.wasm | gzip >  /tmp/out-js3/htdocs/imagemounter.wasm.gzip
 $ mv /tmp/outimg /tmp/out-js3/htdocs/img

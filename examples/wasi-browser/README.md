@@ -1,10 +1,10 @@
 # Running container on browser with xterm-pty, leveraging WASI
 
-This is an example of running a container on browser.
+This is an example of running a container on browser with WASI-on-browser approach.
 The difference between this and [emscripten example](../emscripten) is that this example runs WASI-compiled container on browser rather than emscripten-compiled one.
 
-- pros: You can leverage WASI-specific optimization methods like [Wizer](https://github.com/bytecodealliance/wizer/).  container2wasm pre-initialies the kernel using Wizer by default so the time to take startup an WASI-compiled container hopefully be faster than the emscripten-compiled one.
-- cons: Bigger WASM image size.
+- pros: You can reuse container converted to WASI both on the machine (e.g. wasmtime) and inside browser.
+- cons: This runs containers on emulators with interpreter approach with a single thread so the execution can be slower than the emscripten example which uses QEMU with JIT(TCG) and multi thread support.
 
 This example leverages polyfill library [browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim) provides WASI APIs to the WASM binary on browser.
 We integrated that WASI polyfill's IO to xterm-pty for allowing the user connecting to that container via the terminal.

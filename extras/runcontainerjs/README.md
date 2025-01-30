@@ -8,7 +8,7 @@ Container is expected to run in a web worker.
 
 ### emscripten
 
-See [`./../../examples/no-conversion-emscripten-qemu/`](./../../examples/no-conversion-emscripten-qemu/) for running example.
+See [`./../../examples/no-conversion-emscripten/`](./../../examples/no-conversion-emscripten/) for running example.
 
 The following starts the container.
 

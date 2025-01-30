@@ -17,7 +17,7 @@ ARG LINUX_LOGLEVEL=7
 ARG INIT_DEBUG=true
 ARG VM_MEMORY_SIZE_MB=128
 ARG VM_CORE_NUMS=1
-ARG QEMU_CPR=true
+ARG QEMU_MIGRATION=true
 ARG NO_VMTOUCH=
 ARG EXTERNAL_BUNDLE=
 ARG NO_BINFMT=
@@ -36,7 +36,7 @@ ARG BOCHS_REPO=https://github.com/ktock/Bochs
 ARG BOCHS_REPO_VERSION=a88d1f687ec83ff82b5318f59dcecb8dab44fc83
 
 ARG QEMU_REPO=https://github.com/ktock/qemu-wasm
-ARG QEMU_REPO_VERSION=644e203097ae76e4ca29f7d604055d4a5f624edf
+ARG QEMU_REPO_VERSION=abfbd5cfe83e619cf81cabf597c728a68c3298db
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
 ARG SOURCE_REPO_VERSION=v0.7.0
@@ -331,7 +331,6 @@ RUN make -j $(nproc) -f Makefile \
 
 FROM scratch AS js-tinyemu
 COPY --link --from=tinyemu-emscripten /out/ /
-FROM js-tinyemu AS js-riscv64
 FROM js-tinyemu AS js-arm
 FROM js-tinyemu AS js-i386
 FROM js-tinyemu AS js-mips64
@@ -698,6 +697,14 @@ RUN make ARCH=x86 CROSS_COMPILE=x86_64-linux-gnu- -j$(nproc) all && \
     mv /work-buildlinux/linux/arch/x86/boot/bzImage /out/bzImage && \
     make clean
 
+FROM linux-amd64-dev-common AS linux-amd64-config-dev-qemu
+WORKDIR /work-buildlinux/linux
+COPY --link --from=assets /config/qemu/linux_x86_config ./.config
+RUN make ARCH=x86 CROSS_COMPILE=x86_64-linux-gnu- olddefconfig
+
+FROM scratch AS linux-amd64-config-qemu
+COPY --link --from=linux-amd64-config-dev-qemu /work-buildlinux/linux/.config /
+
 FROM glib-emscripten-base AS qemu-emscripten-dev
 COPY --link --from=qemu-repo / /qemu
 WORKDIR /qemu
@@ -737,15 +744,15 @@ FROM ubuntu:22.04 AS qemu-config-dev-amd64
 ARG LINUX_LOGLEVEL
 ARG VM_MEMORY_SIZE_MB
 ARG VM_CORE_NUMS
-ARG QEMU_CPR
+ARG QEMU_MIGRATION
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
 COPY --link --from=assets /config/qemu/args-x86_64.json.template /args.json.template
-RUN CPR_FLAGS= ; \
-    if test "${QEMU_CPR}" = "true"  ; then \
-      CPR_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
+RUN MIGRATION_FLAGS= ; \
+    if test "${QEMU_MIGRATION}" = "true"  ; then \
+      MIGRATION_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
     fi && \
-    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
-    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR=$CPR_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS MIGRATION="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS MIGRATION=$MIGRATION_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
 RUN echo "Module['arguments'] =" > /out/arg-module.js
 RUN cat /out/args.json >> /out/arg-module.js
 RUN echo ";" >> /out/arg-module.js
@@ -754,15 +761,15 @@ FROM ubuntu:22.04 AS qemu-config-dev-aarch64
 ARG LINUX_LOGLEVEL
 ARG VM_MEMORY_SIZE_MB
 ARG VM_CORE_NUMS
-ARG QEMU_CPR
+ARG QEMU_MIGRATION
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
 COPY --link --from=assets /config/qemu/args-aarch64.json.template /args.json.template
-RUN CPR_FLAGS= ; \
-    if test "${QEMU_CPR}" = "true"  ; then \
-      CPR_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
+RUN MIGRATION_FLAGS= ; \
+    if test "${QEMU_MIGRATION}" = "true"  ; then \
+      MIGRATION_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
     fi && \
-    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
-    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR=$CPR_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS MIGRATION="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS MIGRATION=$MIGRATION_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
 RUN echo "Module['arguments'] =" > /out/arg-module.js
 RUN cat /out/args.json >> /out/arg-module.js
 RUN echo ";" >> /out/arg-module.js
@@ -771,15 +778,15 @@ FROM ubuntu:22.04 AS qemu-config-dev-riscv64
 ARG LINUX_LOGLEVEL
 ARG VM_MEMORY_SIZE_MB
 ARG VM_CORE_NUMS
-ARG QEMU_CPR
+ARG QEMU_MIGRATION
 RUN apt-get update && apt-get install -y gettext-base && mkdir /out
 COPY --link --from=assets /config/qemu/args-riscv64.json.template /args.json.template
-RUN CPR_FLAGS= ; \
-    if test "${QEMU_CPR}" = "true"  ; then \
-      CPR_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
+RUN MIGRATION_FLAGS= ; \
+    if test "${QEMU_MIGRATION}" = "true"  ; then \
+      MIGRATION_FLAGS='"-incoming", "file:/pack/vm.state",' ; \
     fi && \
-    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
-    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS CPR=$CPR_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS MIGRATION="" WASI0_PATH=/tmp/wasi0 WASI1_PATH=/tmp/wasi1 envsubst > /out/args-before-cp.json && \
+    cat /args.json.template | LOGLEVEL=$LINUX_LOGLEVEL MEMORY_SIZE=$VM_MEMORY_SIZE_MB CORE_NUMS=$VM_CORE_NUMS MIGRATION=$MIGRATION_FLAGS WASI0_PATH=/ WASI1_PATH=/pack envsubst > /out/args.json
 RUN echo "Module['arguments'] =" > /out/arg-module.js
 RUN cat /out/args.json >> /out/arg-module.js
 RUN echo ";" >> /out/arg-module.js
@@ -808,8 +815,8 @@ COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
 COPY --link --from=qemu-config-dev-amd64 /out/args-before-cp.json /
 RUN mkdir -p /tmp/wasi0 /tmp/wasi1
 WORKDIR /qemu/build/
-ARG QEMU_CPR
-RUN if test "${QEMU_CPR}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-x86_64 ; fi
+ARG QEMU_MIGRATION
+RUN if test "${QEMU_MIGRATION}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-x86_64 ; fi
 
 FROM qemu-native-dev AS qemu-aarch64-pack
 WORKDIR /qemu/build/
@@ -828,8 +835,8 @@ COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
 COPY --link --from=qemu-config-dev-aarch64 /out/args-before-cp.json /
 RUN mkdir -p /tmp/wasi0 /tmp/wasi1
 WORKDIR /qemu/build/
-ARG QEMU_CPR
-RUN if test "${QEMU_CPR}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-aarch64 ; fi
+ARG QEMU_MIGRATION
+RUN if test "${QEMU_MIGRATION}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-aarch64 ; fi
 
 FROM qemu-native-dev AS qemu-riscv64-pack
 WORKDIR /qemu/build/
@@ -847,8 +854,8 @@ COPY --link --from=get-qemu-state-dev /out/get-qemu-state /get-qemu-state
 COPY --link --from=qemu-config-dev-riscv64 /out/args-before-cp.json /
 RUN mkdir -p /tmp/wasi0 /tmp/wasi1
 WORKDIR /qemu/build/
-ARG QEMU_CPR
-RUN if test "${QEMU_CPR}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-riscv64 ; fi
+ARG QEMU_MIGRATION
+RUN if test "${QEMU_MIGRATION}" = "true"  ; then /get-qemu-state -output=/pack/vm.state --args-json=/args-before-cp.json ./qemu-system-riscv64 ; fi
 
 FROM qemu-emscripten-dev AS qemu-emscripten-dev-amd64
 ARG LOAD_MODE
@@ -951,6 +958,8 @@ COPY --link --from=qemu-emscripten-dev-riscv64 /load /
 
 FROM js-qemu-riscv64-${LOAD_MODE} AS js-qemu-riscv64
 
+FROM js-qemu-riscv64 AS js-riscv64
+
 FROM rust:1.74.1-buster AS bochs-dev-common
 ARG WASI_VFS_VERSION
 ARG WASI_SDK_VERSION
@@ -1047,8 +1056,10 @@ RUN LOGGING_FLAG=--disable-logging && \
 RUN emmake make -j$(nproc) bochs EMU_DEPS="--preload-file /pack"
 RUN mkdir -p /out/ && mv bochs /out/out.js && mv bochs.wasm /out/ && mv bochs.data /out/
 
-FROM scratch AS js-amd64
+FROM scratch AS js-bochs-amd64
 COPY --link --from=bochs-emscripten /out/ /
+
+FROM js-qemu-amd64 AS js-amd64
 
 FROM js-$TARGETARCH AS js
 

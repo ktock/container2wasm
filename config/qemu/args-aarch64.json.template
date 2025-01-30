@@ -1,5 +1,5 @@
 [
-    ${CPR}
+    ${MIGRATION}
     "-cpu", "cortex-a53", "-machine", "virt",
     "-bios", "/pack/edk2-aarch64-code.fd",
     "-nographic", "-m", "${MEMORY_SIZE}M", "-accel", "tcg,tb-size=500,thread=multi", "-smp", "${CORE_NUMS},sockets=${CORE_NUMS}",

@@ -17,7 +17,7 @@ The proxy runs on top of the network stack (running on browser) that receives pa
 
 For HTTPS, the proxy teminates the TLS connection from the contaienr with its own certificate and re-encrypt the connection to the destination using the Fetch API.
 So the proxy's certificate needs to be trusted by the processes in the container (`SSL_CERT_FILE` envvar is pre-configured).
-In [our example JS wrapper for container](../../wasi-browser/), by defualt, the following well-known proxy-related envvars are configured and the proxy's certificate for HTTPS proxy is provided to `/.wasmenv/proxy.crt`.
+In our example, by defualt, the following well-known proxy-related envvars are configured and the proxy's certificate for HTTPS proxy is provided to `/.wasmenv/proxy.crt`.
 
 - `SSL_CERT_FILE=/.wasmenv/proxy.crt`
 - `https_proxy=http://192.168.127.253:80`
@@ -32,7 +32,9 @@ In [our example JS wrapper for container](../../wasi-browser/), by defualt, the 
 - The proxy and containers don't have the control over [Forbidden headers](https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name) that are controlled by the browser.
 - Only chrome is our tested browser. The set of accesible sites might be different among browsers and the configurations.
 
-## Example1: curl
+## WASI-on-browser examples
+
+### Example1: curl
 
 > Tested only on Chrome (116.0.5845.179). The example might not work on other browsers.
 
@@ -84,7 +86,7 @@ This needs to be trusted to perform HTTPS proxy.
 The container can access to the sites allowed by the browser (e.g. CORS-enabled sites).
 The example accesses to a site published via GitHub Pages (`curl https://ktock.github.io/container2wasm-demo/`).
 
-## Example2: nix
+### Example2: nix
 
 > Tested only on Chrome (116.0.5845.179). The example might not work on other browsers.
 
@@ -133,7 +135,7 @@ The example installs and runs `hello` package in the container (`nix-env -iA nix
 
 > It might takes several minutes to complete `nix-env`.
 
-## Example3: emscripten
+## Emscripten examples (`--to-js` flag)
 
 `c2w-net-proxy` can also be used with on-browser emulator compiled with emscripten.
-[`../../emscripten-qemu/`](../../emscripten-qemu/) contains a demo of running container on browser leveraging QEMU compiled with emscripten, with enabling NW.
+[`../../emscripten/`](../../emscripten/) contains a demo of running container on browser leveraging QEMU compiled with emscripten, with enabling NW.

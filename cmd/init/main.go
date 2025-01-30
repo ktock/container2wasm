@@ -155,7 +155,7 @@ func doInit() error {
 		if err := os.Mkdir(packFSDst, 0777); err != nil {
 			return err
 		}
-		// QEMU CPR snapshot can be created here
+		// QEMU snapshot can be created here
 		//////////////////////////////////////////////////////////////////////
 		fmt.Printf("==========") // special string not printed
 		for {

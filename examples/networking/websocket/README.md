@@ -63,39 +63,6 @@ This example installs and runs `figlet` command in the container (`apk update &&
 
 > It might takes several minutes to complete `apk add`.
 
-## Example2: emscripten
+## Example2: emscripten (`--to-js` flag)
 
-![Alpine container on browser with host networking](../../../docs/images/alpine-emscripten-host-networking.png)
-
-The following builds and starts the network stack listening on the WebSocket `localhost:8888`.
-
-```
-$ c2w-net --listen-ws localhost:8888
-```
-
-Prepare a WASI image named `out.wasm`.
-
-```
-$ c2w --to-js alpine:3.18 /tmp/out-js/htdocs/
-```
-
-Then, serve it via browser.
-
-> Run this at the project repo root directory.
-
-```
-$ cp -R ./examples/emscripten/* /tmp/out-js/ && chmod 755 /tmp/out-js/htdocs
-$ docker run --rm -p 8080:80 \
-         -v "/tmp/out-js/htdocs:/usr/local/apache2/htdocs/:ro" \
-         -v "/tmp/out-js/xterm-pty.conf:/usr/local/apache2/conf/extra/xterm-pty.conf:ro" \
-         --entrypoint=/bin/sh httpd -c 'echo "Include conf/extra/xterm-pty.conf" >> /usr/local/apache2/conf/httpd.conf && httpd-foreground'
-```
-
-You can run the container on browser via `localhost:8080/?net=delegate=ws://localhost:8888`.
-The parameter `net=delegate` tells the [container's Javascript wrapper](../../wasi-browser/) to forward packets via the specified WebSocket address listened by `c2w-net`.
-
-This example installs and runs `figlet` command in the container (`apk update && apk add figlet`).
-
-> It might takes several minutes to complete `apk add`.
-
-> NOTE: See also [`../../emscripten-qemu/`](../../emscripten-qemu/) that contains demos of running container on browser leveraging QEMU compiled with emscripten, with enabling NW.
+See [`../../emscripten/`](../../emscripten/).
