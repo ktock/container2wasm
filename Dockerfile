@@ -39,7 +39,7 @@ ARG QEMU_REPO=https://github.com/ktock/qemu-wasm
 ARG QEMU_REPO_VERSION=abfbd5cfe83e619cf81cabf597c728a68c3298db
 
 ARG SOURCE_REPO=https://github.com/ktock/container2wasm
-ARG SOURCE_REPO_VERSION=v0.7.0
+ARG SOURCE_REPO_VERSION=v0.8.0
 
 ARG ZLIB_VERSION=1.3.1
 ARG GLIB_MINOR_VERSION=2.75
