@@ -1,5 +1,7 @@
 module c2w-net-proxy-test
 
-go 1.19
+go 1.21
 
-require github.com/tetratelabs/wazero v1.7.2
+toolchain go1.23.2
+
+require github.com/tetratelabs/wazero v1.8.2
