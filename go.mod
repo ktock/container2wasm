@@ -11,7 +11,7 @@ require (
 	github.com/opencontainers/runtime-spec v1.2.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/net v0.34.0
-	gotest.tools/v3 v3.5.1
+	gotest.tools/v3 v3.5.2
 )
 
 require (
