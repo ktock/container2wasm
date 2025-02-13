@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -52,8 +54,11 @@ func main() {
 		}
 	}
 	if *debug {
-		fmt.Fprintf(os.Stderr, "port mapping: %+v\n", forwards)
+		log.SetOutput(os.Stderr)
+	} else {
+		log.SetOutput(io.Discard)
 	}
+	log.Printf("port mapping: %+v\n", forwards)
 	config := &gvntypes.Configuration{
 		Debug:             *debug,
 		MTU:               1500,
@@ -76,22 +81,23 @@ func main() {
 	}
 	if *invoke {
 		go func() {
+			fmt.Fprintf(os.Stderr, "waiting for NW initialization\n")
 			var conn net.Conn
 			for i := 0; i < 10; i++ {
 				time.Sleep(1 * time.Second)
-				fmt.Fprintf(os.Stderr, "connecting to NW...\n")
+				log.Printf("connecting to NW...\n")
 				conn, err = net.Dial("tcp", *wasiAddr)
 				if err == nil {
 					break
 				}
-				fmt.Fprintf(os.Stderr, "failed connecting to NW: %v\n", err)
+				log.Printf("failed connecting to NW: %v\n", err)
 			}
 			if conn == nil {
-				panic("failed to connect to vm")
+				log.Fatalf("failed to connect to vm: lasterr=%d", err)
 			}
 			// We register our VM network as a qemu "-netdev socket".
 			if err := vn.AcceptQemu(context.TODO(), conn); err != nil {
-				fmt.Fprintf(os.Stderr, "failed AcceptQemu: %v\n", err)
+				log.Printf("failed AcceptQemu: %v\n", err)
 			}
 		}()
 		var cmd *exec.Cmd
@@ -112,7 +118,7 @@ func main() {
 		http.Handle("/", websocket.Handler(func(ws *websocket.Conn) {
 			ws.PayloadType = websocket.BinaryFrame
 			if err := vn.AcceptQemu(context.TODO(), ws); err != nil {
-				fmt.Fprintf(os.Stderr, "forwarding finished: %v\n", err)
+				log.Printf("forwarding finished: %v\n", err)
 			}
 		}))
 		if err := http.ListenAndServe(socketAddr, nil); err != nil {
